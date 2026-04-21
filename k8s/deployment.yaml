@@ -5,6 +5,12 @@ metadata:
   labels:
     app: doctune
 spec:
+  # Otimização Profissional: Estratégia de Deploy (Rolling Update)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   replicas: 1
   selector:
     matchLabels:
@@ -14,32 +20,44 @@ spec:
       labels:
         app: doctune
     spec:
+      # Otimização Profissional: Graceful Shutdown (dá tempo para a API terminar as extrações em andamento)
+      terminationGracePeriodSeconds: 60
+      tolerations:
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
       containers:
       - name: doctune-container
-        image: doctune-api:latest  # Nome da imagem que você fará o build local
-        imagePullPolicy: Never    # Importante para testes locais (usa a imagem local do docker)
+        # Má prática na indústria: usar tag 'latest'. Agora usamos versionamento semântico.
+        image: doctune-api:v1.0.0
+        # Evita baixar imagens a cada restart do Pod (melhora a resiliência em caso de queda de rede)
+        imagePullPolicy: IfNotPresent
+        
+        # Otimização Profissional: Segurança do Container
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+
         ports:
         - containerPort: 8000
         
-        # Otimização Profissional: Limites de Hardware
+        # Limites de Hardware mantidos
         resources:
           limits:
-            nvidia.com/gpu: 1      # Reserva 1 GPU para o Pod
-            memory: "6Gi"          # Limite de RAM (Modelo 1.5B ocupa ~2-3GB na GPU, mas precisa de RAM no load)
-            cpu: "2"               # Limite de núcleos de CPU
+            nvidia.com/gpu: 1
+            memory: "6Gi"
+            cpu: "2"
           requests:
             nvidia.com/gpu: 1
             memory: "4Gi"
             cpu: "1"
 
-        # Otimização Profissional: Health Checks
-        # O modelo leva tempo para carregar na VRAM (vimos isso nos testes).
-        # A readinessProbe garante que o tráfego só chegue quando o modelo estiver PRONTO.
+        # Health Checks mantidos
         readinessProbe:
           httpGet:
             path: /health
             port: 8000
-          initialDelaySeconds: 40  # Tempo estimado para o modelo carregar na GPU
+          initialDelaySeconds: 40
           periodSeconds: 10
         livenessProbe:
           httpGet:
