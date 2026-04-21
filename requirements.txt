@@ -1,0 +1,21 @@
+# Core AI/ML
+torch
+transformers
+peft
+bitsandbytes
+accelerate
+datasets
+trl
+
+# Data Generation
+faker
+pydantic
+
+# API & Web
+fastapi
+uvicorn
+
+# Utils
+tqdm
+tensorboard
+python-dotenv

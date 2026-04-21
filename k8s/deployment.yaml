@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doctune-api
+  labels:
+    app: doctune
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doctune
+  template:
+    metadata:
+      labels:
+        app: doctune
+    spec:
+      containers:
+      - name: doctune-container
+        image: doctune-api:latest  # Nome da imagem que você fará o build local
+        imagePullPolicy: Never    # Importante para testes locais (usa a imagem local do docker)
+        ports:
+        - containerPort: 8000
+        
+        # Otimização Profissional: Limites de Hardware
+        resources:
+          limits:
+            nvidia.com/gpu: 1      # Reserva 1 GPU para o Pod
+            memory: "6Gi"          # Limite de RAM (Modelo 1.5B ocupa ~2-3GB na GPU, mas precisa de RAM no load)
+            cpu: "2"               # Limite de núcleos de CPU
+          requests:
+            nvidia.com/gpu: 1
+            memory: "4Gi"
+            cpu: "1"
+
+        # Otimização Profissional: Health Checks
+        # O modelo leva tempo para carregar na VRAM (vimos isso nos testes).
+        # A readinessProbe garante que o tráfego só chegue quando o modelo estiver PRONTO.
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 40  # Tempo estimado para o modelo carregar na GPU
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+
+        # Variáveis de Ambiente
+        env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
