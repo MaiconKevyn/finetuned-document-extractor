@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Python
+.venv
+venv/
+env/
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+*.egg-info
+dist/
+build/
+
+# Data & notebooks
+data/
+results/
+notebooks/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
+
+# Docs
+ROADMAP.md
+TECH_EXPLAINED.md
+*.md
+
+# Modelos (montados via volume em runtime, não embarcados na imagem)
+models/
+
+# Temp
+*.tmp
+*.temp
+

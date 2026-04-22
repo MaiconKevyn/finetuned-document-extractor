@@ -1,0 +1,19 @@
+services:
+  doctune-api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro
+    environment:
+      MODEL_ID: /app/models/Qwen2.5-1.5B-Instruct
+      ADAPTER_PATH: /app/models/doctune-qwen-1.5b-lora
+      HF_HOME: /tmp/hf
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

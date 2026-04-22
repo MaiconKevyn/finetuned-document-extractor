@@ -1,21 +1,22 @@
 # Core AI/ML
-torch
-transformers
-peft
-bitsandbytes
-accelerate
-datasets
-trl
+# torch/torchvision/torchaudio instalados separadamente no Dockerfile via --index-url cu124
+transformers==4.47.1
+peft==0.14.0
+bitsandbytes==0.45.0
+triton==3.1.0
+accelerate==1.2.1
+datasets==3.2.0
+trl==0.13.0
 
 # Data Generation
-faker
-pydantic
+faker==33.1.0
+pydantic==2.10.4
 
 # API & Web
-fastapi
-uvicorn
+fastapi==0.115.6
+uvicorn==0.34.0
 
 # Utils
-tqdm
-tensorboard
-python-dotenv
+tqdm==4.67.1
+tensorboard==2.18.0
+python-dotenv==1.0.1

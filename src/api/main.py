@@ -1,22 +1,32 @@
+import os
 import torch
 import uvicorn
 import json
 import re
 import asyncio
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 from typing import Optional
 
 app = FastAPI(title="DocTune Extraction API")
 
-# Configurações
-MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
-ADAPTER_PATH = "models/doctune-qwen-1.5b-lora"
+# Configurações via env vars (produção) com fallback para dev local
+MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
+ADAPTER_PATH = os.getenv("ADAPTER_PATH", "/app/models/doctune-qwen-1.5b-lora")
 
 class ExtractionRequest(BaseModel):
     text: str
+
+    @field_validator("text")
+    @classmethod
+    def text_must_not_be_empty_or_too_long(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("text cannot be empty")
+        if len(v) > 50_000:
+            raise ValueError("text exceeds maximum length of 50,000 characters")
+        return v
 
 class ExtractionResponse(BaseModel):
     data: Optional[dict]
@@ -34,13 +44,17 @@ gpu_lock = asyncio.Lock()
 def load_model():
     global model, tokenizer
     if model is None:
-        print("Carregando modelo e adaptador na GPU...")
+        print(f"Carregando modelo {MODEL_ID} e adaptador {ADAPTER_PATH}...")
+
+        if not os.path.exists(ADAPTER_PATH):
+            raise RuntimeError(f"Adapter path not found: {ADAPTER_PATH}. Check ADAPTER_PATH env var or volume mount.")
+
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.float16,
             bnb_4bit_quant_type="nf4",
         )
-        
+
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
         base_model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID,
@@ -48,7 +62,7 @@ def load_model():
             device_map="auto",
             torch_dtype=torch.float16
         )
-        
+
         model = PeftModel.from_pretrained(base_model, ADAPTER_PATH)
         model.eval()
         print("Modelo DocTune pronto para inferência.")
@@ -74,9 +88,8 @@ def run_inference(prompt):
     inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
     with torch.no_grad():
         outputs = model.generate(
-            **inputs, 
-            max_new_tokens=256, 
-            temperature=0.1,
+            **inputs,
+            max_new_tokens=256,
             do_sample=False
         )
     return tokenizer.decode(outputs[0], skip_special_tokens=True)
@@ -105,4 +118,4 @@ async def health():
     return {"status": "ok", "gpu": torch.cuda.is_available()}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, timeout_keep_alive=5, access_log=True)
