@@ -151,6 +151,144 @@ Expected response:
 
 ---
 
+## The Dataset
+
+### Why synthetic data
+
+Real payroll documents are hard to get. They contain sensitive personal information, are rarely shared publicly, and come in hundreds of proprietary formats depending on country, company, and software. Manually labeling them at scale is expensive.
+
+The alternative used here is fully synthetic generation: create realistic-looking documents with Faker (random names, values, dates), apply controlled noise, and use the generation parameters as ground-truth labels. This gives zero labeling cost, perfect label accuracy, and full control over the distribution.
+
+The tradeoff is that the model learns the synthetic distribution, not the real one. For production use, synthetic pre-training followed by few-shot fine-tuning on real labeled examples would be the next step.
+
+### What the documents represent
+
+Each sample is a payslip — a document an employer gives an employee summarizing their compensation for a period. The fields extracted are:
+
+| Field | Type | Example |
+|---|---|---|
+| `employee_name` | string | `"Sarah Johnson"` |
+| `gross_pay` | float | `6200.00` |
+| `tax` | float | `1302.00` |
+| `deductions` | float | `320.50` |
+| `net_pay` | float | `4577.50` |
+| `pay_period` | string | `"March 2025"` |
+| `invoice_number` | string | `"84201"` |
+
+Numeric values are generated with realistic constraints: gross pay is drawn from $2,000–$10,000, tax is 10–25% of gross, deductions are independent ($50–$500), and net pay is computed exactly as `gross - tax - deductions`. This ensures arithmetic consistency across every sample.
+
+### Five document templates
+
+The same data is rendered into five visually different layouts, chosen at random per sample. This forces the model to learn field semantics rather than positional heuristics.
+
+**Template 1 — Structured key-value**
+```
+Employee: Sarah Johnson
+Invoice #: 84201
+Period: March 2025
+Gross: $6200.00
+Tax Amount: $1302.00
+Deductions: $320.50
+Total Net: $4577.50
+```
+
+**Template 2 — Abbreviated labels**
+```
+PAYSLIP
+Name: Sarah Johnson
+ID: 84201
+Dates: March 2025
+Earnings: 6200.00
+Taxes: 1302.00
+Other: 320.50
+Payable: 4577.50
+```
+
+**Template 3 — Prose / narrative**
+```
+Earnings Statement for Sarah Johnson. Invoice 84201 for period March 2025.
+Your gross pay was 6200.00 with taxes of 1302.00 and deductions of 320.50.
+Resulting net: 4577.50.
+```
+
+**Template 4 — Table-like**
+```
+STATEMENT OF EARNINGS
+Sarah Johnson | Ref: 84201
+March 2025
+| Gross   | Tax     | Deductions | Net     |
+| 6200.00 | 1302.00 | 320.50     | 4577.50 |
+```
+
+**Template 5 — Indented pay summary**
+```
+Pay Summary
+To: Sarah Johnson
+Doc: 84201 [March 2025]
+Base Salary:            6200.00
+  (-) Tax withheld:     1302.00
+  (-) Other deductions:  320.50
+  (=) Amount due:       4577.50
+```
+
+The diversity matters: `employee_name` appears as `"Employee:"`, `"Name:"`, `"To:"` or inline in a sentence depending on the template. `invoice_number` appears as `"Invoice #:"`, `"ID:"`, `"Ref:"` or `"Invoice"`. A model that memorizes field labels from a single template will fail on the others — the five-template setup prevents that.
+
+### OCR noise
+
+Real payslips often come from scanned PDFs or photographed documents. OCR (Optical Character Recognition) introduces characteristic errors: letters substituted by symbols, words split across lines, punctuation corrupted.
+
+The `add_noise` function simulates this in two ways:
+
+1. **Character corruption (~2%):** A random 2% of non-digit characters are replaced with symbols from `!@#$%^&*()_+`. Digits are deliberately excluded — OCR rarely corrupts digits, and corrupting them would introduce numeric label noise (the ground truth would no longer match the noisy text).
+
+2. **Spurious line breaks (50% of samples):** A random newline + indent is inserted at a random position in 50% of samples, simulating OCR mis-segmentation where a word is split across lines.
+
+A noisy version of Template 3 might look like:
+```
+E(rnings Statement for Sarah Johnson. Invoice 84201 for period March
+  2025. Your gross pay was 6200.00 with taxes o^ 1302.00 and deductions of 320.50.
+Resulting net: 4577.50.
+```
+
+The ground truth label for this sample remains `{"employee_name": "Sarah Johnson", "gross_pay": 6200.0, ...}` — the noise is only in the input text, never in the labels.
+
+### Record format
+
+Each sample is stored as a JSON line with three fields:
+
+```json
+{
+  "instruction": "Extract the following fields from the document text into a JSON format: employee_name, gross_pay, tax, deductions, net_pay, pay_period, invoice_number.",
+  "input": "<noisy document text>",
+  "output": "{\"employee_name\": \"Sarah Johnson\", \"gross_pay\": 6200.0, ...}"
+}
+```
+
+This is the **Alpaca instruction format**, the standard for supervised fine-tuning of instruction-tuned models. It was chosen because the base model (Qwen2.5-1.5B-Instruct) was pre-trained with instruction-following data in a similar structure. The fine-tuning process reinforces and specializes that capability rather than teaching it from scratch.
+
+The `instruction` field is identical across all 1,000 samples. The `input` varies per sample (different template, different noise, different values). The `output` is the serialized Pydantic model — deterministic, schema-consistent JSON with no formatting variation.
+
+During training, the three fields are concatenated into a single sequence:
+
+```
+### Instruction:
+Extract the following fields from the document text into a JSON format: ...
+
+### Input:
+<noisy document text>
+
+### Response:
+{"employee_name": "Sarah Johnson", ...}
+```
+
+The model learns to predict the `### Response:` continuation given the instruction and noisy input. At inference time, the prompt is sent without the response, and the model generates the JSON.
+
+### Split
+
+1,000 samples are shuffled and split into **900 train / 100 validation** (10% held-out). The validation set is used to monitor eval loss during training and is the same set used for the final benchmark comparison between base and fine-tuned models.
+
+---
+
 ## Reproduce the pipeline
 
 ```bash
