@@ -1,0 +1,60 @@
+{
+  "project": "DocTune",
+  "date": "2026-04-20",
+  "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "adapter_output": "models/doctune-qwen-1.5b-lora",
+  "dataset": {
+    "train": "data/train.jsonl",
+    "validation": "data/val.jsonl",
+    "train_samples": 900,
+    "val_samples": 100,
+    "generation_script": "scripts/generate_dataset.py"
+  },
+  "quantization": {
+    "load_in_4bit": true,
+    "bnb_4bit_quant_type": "nf4",
+    "bnb_4bit_compute_dtype": "float16",
+    "bnb_4bit_use_double_quant": true,
+    "model_load_dtype": "float32"
+  },
+  "lora": {
+    "r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "bias": "none",
+    "task_type": "CAUSAL_LM",
+    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+  },
+  "training": {
+    "num_train_epochs": 3,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "effective_batch_size": 8,
+    "learning_rate": 1e-4,
+    "warmup_steps": 10,
+    "optimizer": "paged_adamw_32bit",
+    "fp16": false,
+    "bf16": false,
+    "max_length": 512,
+    "eval_strategy": "steps",
+    "eval_steps": 100,
+    "save_steps": 100
+  },
+  "hardware": {
+    "gpu": "NVIDIA RTX 2070 8GB",
+    "cuda": "12.4"
+  },
+  "benchmark": {
+    "eval_samples": 100,
+    "baseline": {
+      "valid_json_rate": 0.99,
+      "avg_field_accuracy": 0.6386,
+      "avg_latency_sec": 3.0062
+    },
+    "fine_tuned": {
+      "valid_json_rate": 1.0,
+      "avg_field_accuracy": 0.9371,
+      "avg_latency_sec": 3.986
+    }
+  }
+}

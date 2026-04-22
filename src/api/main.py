@@ -4,13 +4,19 @@ import uvicorn
 import json
 import re
 import asyncio
-from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 from pydantic import BaseModel, field_validator
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 from typing import Optional
 
-app = FastAPI(title="DocTune Extraction API")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    load_model()
+    yield
+
+app = FastAPI(title="DocTune Extraction API", lifespan=lifespan)
 
 # Configurações via env vars (produção) com fallback para dev local
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen2.5-1.5B-Instruct")
@@ -66,10 +72,6 @@ def load_model():
         model = PeftModel.from_pretrained(base_model, ADAPTER_PATH)
         model.eval()
         print("Modelo DocTune pronto para inferência.")
-
-@app.on_event("startup")
-async def startup_event():
-    load_model()
 
 def extract_json_from_text(text):
     try:

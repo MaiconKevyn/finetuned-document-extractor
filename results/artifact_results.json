@@ -1,0 +1,34 @@
+{
+  "project": "DocTune",
+  "date": "2026-04-20",
+  "comparison": {
+    "baseline": {
+      "valid_json_rate": 0.99,
+      "field_accuracy": {
+        "employee_name": 0.79,
+        "gross_pay": 0.56,
+        "tax": 0.58,
+        "deductions": 0.58,
+        "net_pay": 0.6,
+        "pay_period": 0.82,
+        "invoice_number": 0.54
+      },
+      "avg_field_accuracy": 0.6386,
+      "avg_latency_sec": 3.0062
+    },
+    "fine_tuned": {
+      "valid_json_rate": 1.0,
+      "field_accuracy": {
+        "employee_name": 0.92,
+        "gross_pay": 0.92,
+        "tax": 0.94,
+        "deductions": 0.91,
+        "net_pay": 0.99,
+        "pay_period": 0.99,
+        "invoice_number": 0.89
+      },
+      "avg_field_accuracy": 0.9371,
+      "avg_latency_sec": 3.986
+    }
+  }
+}
