@@ -43,11 +43,14 @@ def _make_tokenizer_mock():
 def client():
     import src.api.main as main_module
 
-    def _mock_load_model():
-        main_module.model = _make_model_mock()
-        main_module.tokenizer = _make_tokenizer_mock()
-
-    with patch("src.api.main.load_model", side_effect=_mock_load_model):
+    # Patch the heavy internal calls so load_model() runs but never touches real models.
+    # This keeps load_model itself real and directly callable in TestStartupFailure.
+    with (
+        patch("src.api.main.os.path.exists", return_value=True),
+        patch("transformers.AutoTokenizer.from_pretrained", return_value=_make_tokenizer_mock()),
+        patch("transformers.AutoModelForCausalLM.from_pretrained", return_value=_make_model_mock()),
+        patch("peft.PeftModel.from_pretrained", return_value=_make_model_mock()),
+    ):
         with TestClient(main_module.app) as c:
             yield c
 
@@ -130,6 +133,72 @@ class TestExtractEndpoint:
             "deductions", "net_pay", "pay_period", "invoice_number",
         }
         assert expected_fields.issubset(set(data["data"].keys()))
+
+
+# ---------------------------------------------------------------------------
+# Model failure behaviour
+# ---------------------------------------------------------------------------
+
+class TestModelFailureBehaviour:
+    """What happens when the model does not produce valid JSON."""
+
+    def test_invalid_json_from_model_returns_200_with_null_data(self, client):
+        """data must be null, not a 500, when the model returns garbage."""
+        import src.api.main as main_module
+        original_decode = main_module.tokenizer.decode
+
+        main_module.tokenizer.decode = lambda *a, **kw: "### Response:\nsorry I cannot help with that"
+        try:
+            response = client.post("/extract", json={"text": "some document"})
+            assert response.status_code == 200
+            assert response.json()["data"] is None
+            assert isinstance(response.json()["raw_response"], str)
+        finally:
+            main_module.tokenizer.decode = original_decode
+
+    def test_partial_json_from_model_returns_null_data(self, client):
+        """Truncated or malformed JSON must not crash the endpoint."""
+        import src.api.main as main_module
+        original_decode = main_module.tokenizer.decode
+
+        main_module.tokenizer.decode = lambda *a, **kw: '### Response:\n{"employee_name": "truncated'
+        try:
+            response = client.post("/extract", json={"text": "some document"})
+            assert response.status_code == 200
+            assert response.json()["data"] is None
+        finally:
+            main_module.tokenizer.decode = original_decode
+
+    def test_heavily_noisy_input_does_not_crash(self, client):
+        """All-symbol input should be accepted and return a response."""
+        noisy = "!@#$%^&*()_+ " * 100
+        response = client.post("/extract", json={"text": noisy})
+        assert response.status_code == 200
+        assert "data" in response.json()
+
+    def test_response_includes_constrained_flag(self, client):
+        """Response schema must always include the constrained field."""
+        response = client.post("/extract", json={"text": "Employee: Test"})
+        assert "constrained" in response.json()
+        assert isinstance(response.json()["constrained"], bool)
+
+
+# ---------------------------------------------------------------------------
+# Startup failure
+# ---------------------------------------------------------------------------
+
+class TestStartupFailure:
+    def test_missing_adapter_path_raises_on_load(self):
+        """load_model() must raise RuntimeError when adapter path does not exist."""
+        import src.api.main as main_module
+        original_model = main_module.model
+
+        main_module.model = None
+        with patch("src.api.main.os.path.exists", return_value=False):
+            with pytest.raises(RuntimeError, match="Adapter path not found"):
+                main_module.load_model()
+
+        main_module.model = original_model
 
 
 # ---------------------------------------------------------------------------

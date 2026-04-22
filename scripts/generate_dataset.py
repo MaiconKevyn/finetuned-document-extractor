@@ -5,7 +5,10 @@ from faker import Faker
 from pydantic import BaseModel
 from tqdm import tqdm
 
+SEED = 42
+random.seed(SEED)
 fake = Faker()
+Faker.seed(SEED)
 
 
 class PayStub(BaseModel):
