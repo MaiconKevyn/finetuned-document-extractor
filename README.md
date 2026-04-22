@@ -161,12 +161,57 @@ pip install -r requirements.txt
 # 1. Generate synthetic dataset (1000 samples)
 python scripts/generate_dataset.py
 
-# 2. Fine-tune (requires GPU)
+# 2. Validate data quality before training
+python scripts/check_data_quality.py
+# Checks: schema, completeness ≥ 95%, exact duplicates, empty inputs
+
+# 3. Fine-tune (requires GPU)
 python scripts/finetune.py
 
-# 3. Run benchmark (base vs fine-tuned)
+# 4. Run benchmark (base vs fine-tuned)
 python scripts/evaluate.py
-# Results saved to results/artifact_results.json
+# Results saved to results/artifact_results.json and results/training_run.json
+
+# 5. (Optional) Merge LoRA adapter into base model for PEFT-free serving
+python scripts/merge_adapter.py \
+  --base models/Qwen2.5-1.5B-Instruct \
+  --adapter models/doctune-qwen-1.5b-lora \
+  --output models/doctune-qwen-1.5b-merged
+```
+
+### Running tests
+
+```bash
+pytest tests/ -v
+```
+
+Tests cover the full API contract (health, input validation, extraction response, JSON parsing logic) using mocked model/tokenizer — no GPU required.
+
+---
+
+## Project structure
+
+```
+.
+├── data/                        # Generated datasets (gitignored except .jsonl)
+├── models/                      # Base model + LoRA adapter (mounted as volume, not in image)
+├── results/
+│   ├── artifact_results.json    # Per-field accuracy, base vs fine-tuned
+│   └── training_run.json        # Full training run record (hyperparams + benchmark)
+├── scripts/
+│   ├── generate_dataset.py      # Synthetic payslip generator with OCR noise
+│   ├── check_data_quality.py    # Data quality gate (run before fine-tuning)
+│   ├── finetune.py              # QLoRA fine-tuning with SFTTrainer
+│   ├── evaluate.py              # Benchmark: base model vs fine-tuned
+│   ├── merge_adapter.py         # Merge LoRA adapter into base for standalone serving
+│   └── test_model_load.py       # Smoke test for model loading outside Docker
+├── src/api/
+│   └── main.py                  # FastAPI app — lifespan model loading, GPU lock, /extract
+├── tests/
+│   └── test_api.py              # 17 pytest tests (no GPU required)
+├── .env.example                 # Environment variable reference
+├── docker-compose.yml           # Local serving with GPU and model volume mount
+└── Dockerfile                   # Python 3.11 + CUDA 12.4 + torch 2.5.1 (no models baked in)
 ```
 
 ---
@@ -180,5 +225,6 @@ python scripts/evaluate.py
 | Quantization | bitsandbytes NF4 4-bit |
 | API | FastAPI + Uvicorn |
 | Serving | Docker Compose + NVIDIA Container Toolkit |
+| Testing | pytest + httpx (no GPU required) |
 | Python | 3.11 |
 | CUDA | 12.4 |
