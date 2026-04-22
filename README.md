@@ -41,11 +41,74 @@ generate_dataset.py   →   finetune.py   →   evaluate.py   →   src/api/main
    (synthetic data)       (LoRA / SFT)     (benchmark)        (FastAPI serving)
 ```
 
-**Dataset generation:** 1,000 synthetic payslips across 5 document templates with simulated OCR noise (character corruption, spurious line breaks). Labels are exact JSON.
+---
 
-**Fine-tuning:** QLoRA (4-bit NF4 base + LoRA adapters, r=16, α=32) via `SFTTrainer`. Targets all attention and MLP projection layers. Trained for 3 epochs on a single RTX 2070 8GB.
+## Fine-tuning Details
 
-**Serving:** FastAPI with an async GPU lock (one inference at a time), 4-bit inference via bitsandbytes, LoRA adapter loaded via PEFT.
+### Method: QLoRA (Quantized Low-Rank Adaptation)
+
+Instead of updating all 1.5B parameters, QLoRA freezes the base model in 4-bit and trains only small low-rank adapter matrices injected into each layer. This makes fine-tuning feasible on consumer hardware (8GB VRAM) with minimal accuracy loss.
+
+### Quantization (BitsAndBytes)
+
+| Parameter | Value | Why |
+|---|---|---|
+| `load_in_4bit` | `True` | Reduces base model VRAM from ~3GB (FP16) to ~0.9GB |
+| `bnb_4bit_quant_type` | `nf4` | NormalFloat4 — better distribution for neural network weights than standard INT4 |
+| `bnb_4bit_compute_dtype` | `float16` | Dequantizes to FP16 during forward pass for numerical stability |
+| `bnb_4bit_use_double_quant` | `True` | Quantizes the quantization constants themselves, saving an extra ~0.4GB |
+| `torch_dtype` (model load) | `float32` | Forced to FP32 due to RTX 2070 lacking BFloat16 support — avoids GradScaler instability during training |
+
+### LoRA Configuration
+
+| Parameter | Value | Why |
+|---|---|---|
+| `r` (rank) | `16` | Controls adapter size. r=16 adds ~13M trainable params — enough capacity for a structured extraction task without overfitting on 900 samples |
+| `lora_alpha` | `32` | Scaling factor (α/r = 2.0). Higher ratio amplifies adapter contribution relative to frozen weights |
+| `lora_dropout` | `0.05` | Light regularization to prevent overfitting on the small dataset |
+| `bias` | `none` | Bias terms not trained — standard for QLoRA |
+| `target_modules` | all projections | Adapters on `q_proj`, `k_proj`, `v_proj`, `o_proj` (attention) + `gate_proj`, `up_proj`, `down_proj` (MLP). Full coverage yields better task alignment than attention-only |
+
+### Training Hyperparameters
+
+| Parameter | Value | Why |
+|---|---|---|
+| `per_device_train_batch_size` | `1` | Maximum that fits in 8GB VRAM without FP16 GradScaler |
+| `gradient_accumulation_steps` | `8` | Effective batch size = 8. Simulates larger batches without extra VRAM |
+| `learning_rate` | `1e-4` | Standard QLoRA LR. Lower than typical SFT (2e-4) for stability without mixed precision |
+| `num_train_epochs` | `3` | Sufficient convergence on 900 samples; more epochs risk overfitting |
+| `warmup_steps` | `10` | Gradual LR ramp-up to avoid early instability |
+| `optimizer` | `paged_adamw_32bit` | Paged optimizer offloads optimizer states to CPU RAM when GPU is under pressure, preventing OOM |
+| `fp16 / bf16` | `False / False` | Disabled — RTX 2070 doesn't support BFloat16 and FP16 GradScaler caused gradient underflow during testing |
+| `max_length` | `512` | Covers all document templates + JSON output with margin |
+| `eval_strategy` | `steps` (every 100) | Monitors val loss during training to detect overfitting early |
+
+### Prompt Format
+
+```
+### Instruction:
+Extract the following fields from the document text into a JSON format:
+employee_name, gross_pay, tax, deductions, net_pay, pay_period, invoice_number.
+
+### Input:
+<noisy document text>
+
+### Response:
+{"employee_name": "...", "gross_pay": ..., ...}
+```
+
+Alpaca-style instruction format. The model learns to associate the `### Response:` token boundary with structured JSON output, which is why the base model (already instruction-tuned) gets to 99% valid JSON even without fine-tuning — it understands the format. Fine-tuning teaches it the specific field semantics and extraction precision.
+
+### Dataset
+
+- **1,000 synthetic payslips** generated with Faker + 5 document templates
+- **OCR noise**: ~2% of non-digit characters randomly corrupted, random spurious line breaks inserted 50% of the time
+- **Split**: 900 train / 100 validation (10% held-out)
+- **Labels**: exact JSON via Pydantic model serialization — no label noise
+
+### Hardware
+
+Trained on a single **RTX 2070 8GB** consumer GPU. Peak VRAM usage ~6.5GB during training.
 
 ---
 
