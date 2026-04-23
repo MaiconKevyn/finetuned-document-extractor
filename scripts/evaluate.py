@@ -1,11 +1,14 @@
 import json
 import torch
-import re
 import time
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
 from tqdm import tqdm
+from src.utils import extract_json_from_text
 
 # Fields whose values are numeric — compared with tolerance, not string equality
 NUMERIC_FIELDS = {"gross_pay", "tax", "deductions", "net_pay"}
@@ -52,15 +55,6 @@ INSTRUCTION = (
     "employee_name, gross_pay, tax, deductions, net_pay, pay_period, invoice_number."
 )
 
-
-def extract_json(text):
-    try:
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-    except Exception:
-        return None
-    return None
 
 
 def values_match(field: str, pred_val, gt_val) -> bool:
@@ -171,6 +165,8 @@ def run_evaluation(
     )
 
     tokenizer = AutoTokenizer.from_pretrained(model_id)
+    # float16 is safe for inference-only (no backward pass → no GradScaler underflow).
+    # finetune.py uses float32 because RTX 2070 GradScaler had stability issues with fp16 training.
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
         quantization_config=bnb_config,
@@ -195,7 +191,7 @@ def run_evaluation(
             outputs = model.generate(**inputs, max_new_tokens=256, do_sample=False)
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         prediction_text = response.split("### Response:\n")[-1]
-        predictions.append(extract_json(prediction_text))
+        predictions.append(extract_json_from_text(prediction_text))
         ground_truths.append(json.loads(sample["output"]))
 
     duration = time.time() - start_time

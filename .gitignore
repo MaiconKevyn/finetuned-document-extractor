@@ -26,11 +26,20 @@ wheels/
 # Ignorar modelos e adaptadores (arquivos grandes)
 models/*
 !models/.gitkeep
+!models/checksums.json
 # Ignorar dados e datasets gerados
 data/*.jsonl
 data/*.json
 data/logs/
 results/*.json
+
+# MLflow
+mlruns/
+mlflow.db
+
+# Test artifacts
+.coverage
+htmlcov/
 
 # Environment
 .env

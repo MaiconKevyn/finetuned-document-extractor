@@ -320,10 +320,24 @@ python scripts/merge_adapter.py \
 ### Running tests
 
 ```bash
+# Run all tests (no GPU required — model is mocked)
 pytest tests/ -v
+
+# With coverage report
+pytest tests/ --cov=src --cov-report=term-missing
 ```
 
-Tests cover the full API contract (health, input validation, extraction response, JSON parsing logic) using mocked model/tokenizer — no GPU required.
+81 tests across 4 modules covering: API contract (health, input validation, extraction, constrained generation), JSON extraction logic, evaluate.py utility functions (`values_match`, `build_prompt`, `calculate_metrics`), data quality gate, and monitoring module. Coverage: **88%** on `src/` (uncovered lines are GPU-only inference paths).
+
+### Verifying model integrity
+
+```bash
+# Register checksums after training (run once)
+python scripts/verify_model_integrity.py --register
+
+# Verify on each deploy (mitigates OWASP LLM03 supply chain risk)
+python scripts/verify_model_integrity.py
+```
 
 ---
 
@@ -331,25 +345,36 @@ Tests cover the full API contract (health, input validation, extraction response
 
 ```
 .
-├── data/                        # Generated datasets (gitignored except .jsonl)
-├── models/                      # Base model + LoRA adapter (mounted as volume, not in image)
+├── data/                          # Generated datasets (gitignored)
+├── models/
+│   ├── .gitkeep
+│   └── checksums.json             # SHA256 of adapter artifacts (supply chain guard)
 ├── results/
-│   ├── artifact_results.json    # Per-field accuracy, base vs fine-tuned
-│   └── training_run.json        # Full training run record (hyperparams + benchmark)
+│   ├── artifact_results.json      # Per-field accuracy, base vs fine-tuned
+│   └── training_run.json          # Full training run record (hyperparams + benchmark)
 ├── scripts/
-│   ├── generate_dataset.py      # Synthetic payslip generator with OCR noise
-│   ├── check_data_quality.py    # Data quality gate (run before fine-tuning)
-│   ├── finetune.py              # QLoRA fine-tuning with SFTTrainer
-│   ├── evaluate.py              # Benchmark: base model vs fine-tuned
-│   ├── merge_adapter.py         # Merge LoRA adapter into base for standalone serving
-│   └── test_model_load.py       # Smoke test for model loading outside Docker
-├── src/api/
-│   └── main.py                  # FastAPI app — lifespan model loading, GPU lock, /extract
+│   ├── generate_dataset.py        # Synthetic payslip generator — outputs train.jsonl / val.jsonl
+│   ├── check_data_quality.py      # Data quality gate (run before fine-tuning)
+│   ├── finetune.py                # QLoRA fine-tuning with SFTTrainer + MLflow tracking
+│   ├── evaluate.py                # Benchmark: base model vs fine-tuned (0-shot / 3-shot)
+│   ├── merge_adapter.py           # Merge LoRA adapter into base for PEFT-free serving
+│   ├── split_data.py              # Standalone utility: re-split a JSONL with custom ratio
+│   ├── verify_model_integrity.py  # SHA256 integrity check for adapter artifacts (OWASP LLM03)
+│   └── test_model_load.py         # Smoke test for model loading outside Docker
+├── src/
+│   ├── utils.py                   # Shared utilities (extract_json_from_text)
+│   ├── monitoring.py              # Request logging + Evidently drift detection
+│   └── api/
+│       └── main.py                # FastAPI app — lifespan, GPU lock, /extract, /monitoring/drift
 ├── tests/
-│   └── test_api.py              # 17 pytest tests (no GPU required)
-├── .env.example                 # Environment variable reference
-├── docker-compose.yml           # Local serving with GPU and model volume mount
-└── Dockerfile                   # Python 3.11 + CUDA 12.4 + torch 2.5.1 (no models baked in)
+│   ├── conftest.py                # Shared fixtures (mocked client, no GPU)
+│   ├── test_api.py                # API contract: health, validation, extraction, failure modes
+│   ├── test_evaluate_utils.py     # values_match, build_prompt, calculate_metrics
+│   ├── test_data_quality.py       # check_data_quality: schema, completeness, duplicates
+│   └── test_monitoring.py         # log_request, drift report, /monitoring/drift endpoint
+├── .env.example                   # Environment variable reference
+├── docker-compose.yml             # Local serving with GPU + persistent hf_cache volume
+└── Dockerfile                     # Python 3.11 + CUDA 12.4 + torch (no models baked in)
 ```
 
 ---
@@ -361,6 +386,9 @@ Tests cover the full API contract (health, input validation, extraction response
 | Base model | Qwen2.5-1.5B-Instruct |
 | Fine-tuning | QLoRA via PEFT + TRL SFTTrainer |
 | Quantization | bitsandbytes NF4 4-bit |
+| Constrained generation | lm-format-enforcer (optional) |
+| Experiment tracking | MLflow |
+| Drift monitoring | Evidently |
 | API | FastAPI + Uvicorn |
 | Serving | Docker Compose + NVIDIA Container Toolkit |
 | Testing | pytest + httpx (no GPU required) |

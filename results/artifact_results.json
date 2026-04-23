@@ -1,8 +1,9 @@
 {
   "project": "DocTune",
   "date": "2026-04-20",
+  "note": "Numeric fields compared with abs tolerance 0.5 (accounts for 4-bit drift)",
   "comparison": {
-    "baseline": {
+    "baseline_0shot": {
       "valid_json_rate": 0.99,
       "field_accuracy": {
         "employee_name": 0.79,
@@ -16,6 +17,7 @@
       "avg_field_accuracy": 0.6386,
       "avg_latency_sec": 3.0062
     },
+    "baseline_3shot": null,
     "fine_tuned": {
       "valid_json_rate": 1.0,
       "field_accuracy": {

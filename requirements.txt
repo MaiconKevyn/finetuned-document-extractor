@@ -3,7 +3,7 @@
 transformers==4.47.1
 peft==0.14.0
 bitsandbytes==0.45.0
-triton==3.1.0
+triton==3.2.0
 accelerate==1.2.1
 datasets==3.2.0
 trl==0.13.0
@@ -15,12 +15,14 @@ pydantic==2.10.4
 # API & Web
 fastapi==0.115.6
 uvicorn==0.34.0
-lm-format-enforcer==0.10.9
+lm-format-enforcer==0.10.9  # optional: only used when USE_CONSTRAINED_GENERATION=true
 
 # Utils
 tqdm==4.67.1
 tensorboard==2.18.0
 python-dotenv==1.0.1
+mlflow==3.11.1
+evidently==0.7.21
 
 # Testing
 pytest==8.3.4

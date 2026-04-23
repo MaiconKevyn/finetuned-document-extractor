@@ -5,10 +5,12 @@ services:
       - "8000:8000"
     volumes:
       - ./models:/app/models:ro
+      - hf_cache:/tmp/hf        # persistent HF cache — avoids re-download on container restart
     environment:
       MODEL_ID: /app/models/Qwen2.5-1.5B-Instruct
       ADAPTER_PATH: /app/models/doctune-qwen-1.5b-lora
       HF_HOME: /tmp/hf
+      # USE_CONSTRAINED_GENERATION: "true"  # optional: enforce valid JSON via lm-format-enforcer
     deploy:
       resources:
         reservations:
@@ -17,3 +19,6 @@ services:
               count: 1
               capabilities: [gpu]
     restart: unless-stopped
+
+volumes:
+  hf_cache:

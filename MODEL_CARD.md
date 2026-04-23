@@ -44,15 +44,15 @@ See [The Dataset](README.md#the-dataset) section in the README for full details 
 
 Evaluated on 100 held-out samples. Numeric fields compared with absolute tolerance ±0.5 (accounts for 4-bit quantization drift).
 
-### Three-way comparison
+### Comparison: Base 0-shot vs Fine-tuned
 
-| Metric | Base 0-shot | Base 3-shot | Fine-tuned |
-|---|---|---|---|
-| Valid JSON Rate | 99.0% | 99.0% | **100.0%** |
-| Avg Field Accuracy | 63.86% | — | **93.71%** |
-| Avg Latency / sample | 3.006s | — | 3.986s |
+| Metric | Base 0-shot | Fine-tuned |
+|---|---|---|
+| Valid JSON Rate | 99.0% | **100.0%** |
+| Avg Field Accuracy | 63.86% | **93.71%** |
+| Avg Latency / sample | 3.006s | 3.986s |
 
-> Note: 3-shot baseline result to be updated after re-running evaluate.py with the updated metric.
+> `evaluate.py` also supports a 3-shot baseline (`n_shots=3`). Run it to populate `results/artifact_results.json` with the 3-shot column if needed.
 
 ### Per-field accuracy (fine-tuned)
 

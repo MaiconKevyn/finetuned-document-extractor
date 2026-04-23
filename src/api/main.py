@@ -2,14 +2,15 @@ import os
 import torch
 import uvicorn
 import json
-import re
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel, field_validator
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel
-from typing import Optional
+from typing import Any, Dict, Optional
+from src.utils import extract_json_from_text
+from src.monitoring import log_request, run_drift_report
 
 # When true, uses lm-format-enforcer to constrain generation to valid JSON
 # matching the extraction schema — eliminates data:null responses by construction.
@@ -54,7 +55,7 @@ class ExtractionRequest(BaseModel):
 
 
 class ExtractionResponse(BaseModel):
-    data: Optional[dict]
+    data: Optional[Dict[str, Any]] = None
     raw_response: str
     constrained: bool = False
 
@@ -95,15 +96,6 @@ def load_model():
         model.eval()
         print("DocTune model ready.")
 
-
-def extract_json_from_text(text: str) -> Optional[dict]:
-    try:
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-    except Exception:
-        return None
-    return None
 
 
 def run_inference(prompt: str) -> tuple[str, bool]:
@@ -148,6 +140,8 @@ async def extract_fields(request: ExtractionRequest):
     prediction_text = response_text.split("### Response:\n")[-1]
     structured_data = extract_json_from_text(prediction_text)
 
+    log_request(request.text, structured_data)
+
     return ExtractionResponse(
         data=structured_data,
         raw_response=prediction_text,
@@ -158,6 +152,12 @@ async def extract_fields(request: ExtractionRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok", "gpu": torch.cuda.is_available()}
+
+
+@app.get("/monitoring/drift")
+async def drift_report():
+    """Compare current request distribution against training data. Requires ≥ 30 logged requests."""
+    return await asyncio.to_thread(run_drift_report)
 
 
 if __name__ == "__main__":

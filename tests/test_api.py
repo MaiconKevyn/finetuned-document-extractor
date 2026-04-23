@@ -9,50 +9,7 @@ import json
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
-
-
-# ---------------------------------------------------------------------------
-# Patch heavy dependencies before importing main so no CUDA call is made
-# ---------------------------------------------------------------------------
-
-_FAKE_RESPONSE = (
-    "### Response:\n"
-    '{"employee_name":"John Silva","gross_pay":5000.0,"tax":750.0,'
-    '"deductions":200.0,"net_pay":4050.0,"pay_period":"March 2025",'
-    '"invoice_number":"84201"}'
-)
-
-def _make_model_mock():
-    mock = MagicMock()
-    # generate() must return something index-able as outputs[0]
-    mock.generate.return_value = MagicMock(__getitem__=lambda self, i: [0])
-    mock.eval.return_value = mock
-    return mock
-
-def _make_tokenizer_mock():
-    mock = MagicMock()
-    # tokenizer(text, return_tensors="pt") returns object with .to()
-    inputs = MagicMock()
-    inputs.to.return_value = inputs
-    mock.return_value = inputs
-    mock.decode.return_value = _FAKE_RESPONSE
-    return mock
-
-
-@pytest.fixture(scope="module")
-def client():
-    import src.api.main as main_module
-
-    # Patch the heavy internal calls so load_model() runs but never touches real models.
-    # This keeps load_model itself real and directly callable in TestStartupFailure.
-    with (
-        patch("src.api.main.os.path.exists", return_value=True),
-        patch("transformers.AutoTokenizer.from_pretrained", return_value=_make_tokenizer_mock()),
-        patch("transformers.AutoModelForCausalLM.from_pretrained", return_value=_make_model_mock()),
-        patch("peft.PeftModel.from_pretrained", return_value=_make_model_mock()),
-    ):
-        with TestClient(main_module.app) as c:
-            yield c
+# client fixture is defined in conftest.py and shared across all test modules
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +164,7 @@ class TestStartupFailure:
 
 class TestExtractJsonFromText:
     def setup_method(self):
-        from src.api.main import extract_json_from_text
+        from src.utils import extract_json_from_text
         self.fn = extract_json_from_text
 
     def test_valid_json_extracted(self):

@@ -1,10 +1,12 @@
 import torch
 import os
+import mlflow
 from datasets import load_dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
+    TrainerCallback,
 )
 from peft import LoraConfig, prepare_model_for_kbit_training
 from trl import SFTTrainer, SFTConfig
@@ -20,6 +22,18 @@ os.makedirs("data/logs", exist_ok=True)
 
 def formatting_prompts_func(example):
     return f"### Instruction:\n{example['instruction']}\n\n### Input:\n{example['input']}\n\n### Response:\n{example['output']}"
+
+
+class MLflowStepCallback(TrainerCallback):
+    """Logs train_loss and eval_loss to MLflow at every logging/eval step."""
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if logs and mlflow.active_run():
+            step = state.global_step
+            for key in ("loss", "eval_loss", "learning_rate"):
+                if key in logs:
+                    mlflow.log_metric(key, logs[key], step=step)
+
 
 def train():
     # 1. Carregar Dataset
@@ -90,13 +104,34 @@ def train():
         args=sft_config,
     )
 
-    # 7. Iniciar Treino
-    print("Iniciando o Fine-tuning na RTX 2070 (Modo Stable Float32 Adaptor)...")
-    trainer.train()
+    # 7. Iniciar Treino com MLflow tracking
+    mlflow.set_experiment("doctune-finetune")
+    with mlflow.start_run(run_name="qlora-qwen2.5-1.5b"):
+        mlflow.log_params({
+            "model_id":    MODEL_ID,
+            "lora_r":      peft_config.r,
+            "lora_alpha":  peft_config.lora_alpha,
+            "lora_dropout": peft_config.lora_dropout,
+            "learning_rate": sft_config.learning_rate,
+            "num_epochs":  sft_config.num_train_epochs,
+            "batch_size":  sft_config.per_device_train_batch_size,
+            "grad_accum":  sft_config.gradient_accumulation_steps,
+            "max_length":  sft_config.max_length,
+            "optimizer":   sft_config.optim,
+            "quant_type":  bnb_config.bnb_4bit_quant_type,
+        })
 
-    # 8. Salvar o Adaptador
-    trainer.save_model(OUTPUT_DIR)
-    print(f"Modelo salvo em {OUTPUT_DIR}")
+        print("Iniciando o Fine-tuning na RTX 2070 (Modo Stable Float32 Adaptor)...")
+        trainer.add_callback(MLflowStepCallback())
+        trainer.train()
+
+        # 8. Salvar o Adaptador
+        trainer.save_model(OUTPUT_DIR)
+        print(f"Modelo salvo em {OUTPUT_DIR}")
+
+        mlflow.log_artifact(os.path.join(OUTPUT_DIR, "adapter_config.json"))
+        if os.path.exists("results/training_run.json"):
+            mlflow.log_artifact("results/training_run.json")
 
 if __name__ == "__main__":
     train()

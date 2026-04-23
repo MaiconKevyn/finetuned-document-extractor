@@ -1,0 +1,6 @@
+{
+  "models/doctune-qwen-1.5b-lora/adapter_config.json": "b778871f716f1372cb11e2df8b6763d3cb156e0107b09183b133d3bdb1c8b156",
+  "models/doctune-qwen-1.5b-lora/adapter_model.safetensors": "6bcf0cfc089c76233ec2ad24fe1f64ad901d303e89ab38d21626f64e93d8c6e3",
+  "models/doctune-qwen-1.5b-lora/tokenizer.json": "3fd169731d2cbde95e10bf356d66d5997fd885dd8dbb6fb4684da3f23b2585d8",
+  "models/doctune-qwen-1.5b-lora/tokenizer_config.json": "47bfa3e7727312946b29ac10d6dd0672d63cf7815b2a160b9523872040d2e536"
+}

@@ -143,16 +143,16 @@ def main(num_samples: int = 1000, val_ratio: float = 0.1) -> None:
 
     os.makedirs("data", exist_ok=True)
 
-    with open("data/train_dataset.jsonl", "w") as f:
+    with open("data/train.jsonl", "w") as f:
         for entry in train_data:
             f.write(json.dumps(entry) + "\n")
 
-    with open("data/val_dataset.jsonl", "w") as f:
+    with open("data/val.jsonl", "w") as f:
         for entry in val_data:
             f.write(json.dumps(entry) + "\n")
 
     print(f"Done. Train: {len(train_data)} samples | Val: {len(val_data)} samples")
-    print("Saved to data/train_dataset.jsonl and data/val_dataset.jsonl")
+    print("Saved to data/train.jsonl and data/val.jsonl")
 
 
 if __name__ == "__main__":
