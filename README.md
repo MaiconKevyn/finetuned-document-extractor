@@ -366,3 +366,11 @@ Tests cover the full API contract (health, input validation, extraction response
 | Testing | pytest + httpx (no GPU required) |
 | Python | 3.11 |
 | CUDA | 12.4 |
+
+---
+
+## Contact
+
+**Maicon Kevyn**
+Email: osonodenewton@gmail.com
+
