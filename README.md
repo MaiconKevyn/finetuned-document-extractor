@@ -58,22 +58,7 @@ The repository covers the full lifecycle:
 - **Drift monitoring**: tracks request distribution against training data features
 
 ## Architecture
-```text
-scripts/generate_dataset.py
-        |
-        v
-data/train.jsonl + data/val.jsonl
-        |
-        v
-scripts/finetune.py
-        |
-        v
-models/doctune-qwen-1.5b-lora
-        |
-        +--> scripts/evaluate.py --> results/artifact_results.json
-        |
-        +--> src/api/main.py --> FastAPI /extract
-```
+![Fine-Tuning Project Architecture](assets/arch.png)
 
 ## Technology Stack
 | Component | Technology | Purpose |
