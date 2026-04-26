@@ -6,6 +6,7 @@ extract_json_from_text is tested in test_api.py (now lives in src/utils.py).
 """
 import sys
 import os
+import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
@@ -13,6 +14,11 @@ from scripts.evaluate import (
     values_match,
     build_prompt,
     calculate_metrics,
+    bucket_noise_level,
+    business_rule_holds,
+    compute_latency_stats,
+    compute_percentile,
+    append_failure_log,
     INSTRUCTION,
     FEW_SHOT_EXAMPLES,
     NUMERIC_FIELDS,
@@ -162,6 +168,7 @@ class TestCalculateMetrics:
         gt = self._make_gt()
         metrics = calculate_metrics([gt.copy()], [gt])
         assert "avg_latency_sec" not in metrics
+        assert "latency_ms_p50" not in metrics
 
     def test_multiple_samples_average_correctly(self):
         gt = self._make_gt()
@@ -169,3 +176,105 @@ class TestCalculateMetrics:
         wrong = {k: "bad" for k in gt}
         metrics = calculate_metrics([gt.copy(), wrong], [gt, gt])
         assert 0.0 < metrics["avg_field_accuracy"] < 1.0
+
+    def test_business_rule_compliance_added(self):
+        gt = self._make_gt()
+        metrics = calculate_metrics([gt.copy()], [gt])
+        assert metrics["business_rule_compliance"] == 1.0
+
+    def test_business_rule_invalid_prediction_fails_compliance(self):
+        gt = self._make_gt()
+        broken = self._make_gt(net_pay=9999.0)
+        metrics = calculate_metrics([broken], [gt])
+        assert metrics["business_rule_compliance"] == 0.0
+
+    def test_accuracy_by_template_uses_metadata(self):
+        gt = self._make_gt()
+        wrong = self._make_gt(employee_name="Wrong")
+        metadata = [{"template_id": "narrative"}, {"template_id": "table"}]
+        metrics = calculate_metrics([gt.copy(), wrong], [gt, gt], sample_metadata=metadata)
+        assert metrics["accuracy_by_template"]["narrative"] == 1.0
+        assert metrics["accuracy_by_template"]["table"] < 1.0
+
+    def test_accuracy_by_noise_bucket_uses_metadata(self):
+        gt = self._make_gt()
+        wrong = self._make_gt(employee_name="Wrong")
+        metadata = [{"noise_level": 0.005}, {"noise_level": 0.04}]
+        metrics = calculate_metrics([gt.copy(), wrong], [gt, gt], sample_metadata=metadata)
+        assert metrics["accuracy_by_noise_bucket"]["low"] == 1.0
+        assert metrics["accuracy_by_noise_bucket"]["high"] < 1.0
+
+    def test_hallucination_rate_counts_non_null_prediction_when_gt_is_null(self):
+        gt = self._make_gt(invoice_number=None)
+        pred = self._make_gt(invoice_number="84201")
+        metrics = calculate_metrics([pred], [gt])
+        assert metrics["hallucination_rate"] == 1.0
+
+    def test_hallucination_rate_zero_when_model_leaves_missing_field_blank(self):
+        gt = self._make_gt(invoice_number=None)
+        pred = self._make_gt(invoice_number=None)
+        metrics = calculate_metrics([pred], [gt])
+        assert metrics["hallucination_rate"] == 0.0
+
+    def test_latency_stats_added_when_latencies_provided(self):
+        gt = self._make_gt()
+        metrics = calculate_metrics([gt.copy()], [gt], latencies_sec=[0.1, 0.2, 0.3])
+        assert metrics["latency_ms_p50"] == 200.0
+        assert metrics["latency_ms_max"] == 300.0
+
+
+class TestEvaluationHelpers:
+    def test_noise_bucket_boundaries(self):
+        assert bucket_noise_level(0.0) == "low"
+        assert bucket_noise_level(0.01) == "low"
+        assert bucket_noise_level(0.02) == "medium"
+        assert bucket_noise_level(0.05) == "high"
+
+    def test_business_rule_holds_for_valid_record(self):
+        assert business_rule_holds({
+            "gross_pay": 5000.0,
+            "tax": 750.0,
+            "deductions": 200.0,
+            "net_pay": 4050.0,
+        })
+
+    def test_business_rule_rejects_invalid_record(self):
+        assert not business_rule_holds({
+            "gross_pay": 5000.0,
+            "tax": 750.0,
+            "deductions": 200.0,
+            "net_pay": 9999.0,
+        })
+
+    def test_percentile_interpolates(self):
+        assert compute_percentile([100, 200, 300, 400], 50) == 250
+
+    def test_compute_latency_stats_returns_ms_values(self):
+        stats = compute_latency_stats([0.1, 0.2, 0.3])
+        assert stats["avg_latency_ms"] == 200.0
+        assert stats["latency_ms_p95"] > stats["latency_ms_p50"]
+
+    def test_append_failure_log_writes_jsonl_records(self, tmp_path):
+        path = tmp_path / "failure_log.jsonl"
+        metrics = {
+            "_failures": [
+                {
+                    "sample_idx": 0,
+                    "reason": "field_mismatch",
+                    "field": "employee_name",
+                    "pred": "Wrong",
+                    "gt": "Jane Doe",
+                }
+            ]
+        }
+        append_failure_log(
+            metrics=metrics,
+            label="baseline_0shot",
+            dataset_path="data/test.jsonl",
+            log_path=str(path),
+        )
+        lines = path.read_text().splitlines()
+        assert len(lines) == 1
+        parsed = json.loads(lines[0])
+        assert parsed["model"] == "baseline_0shot"
+        assert parsed["dataset"] == "data/test.jsonl"

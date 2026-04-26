@@ -1,6 +1,7 @@
 {
   "project": "DocTune",
   "date": "2026-04-20",
+  "prompt_version": "v1",
   "note": "Numeric fields compared with abs tolerance 0.5 (accounts for 4-bit drift)",
   "comparison": {
     "baseline_0shot": {

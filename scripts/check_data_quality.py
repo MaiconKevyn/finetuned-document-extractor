@@ -9,10 +9,22 @@ from pathlib import Path
 REQUIRED_FIELDS = {"instruction", "input", "output"}
 OUTPUT_FIELDS = {"employee_name", "gross_pay", "tax", "deductions", "net_pay", "pay_period", "invoice_number"}
 COMPLETENESS_THRESHOLD = 0.95
+DATASET_FILENAMES = {
+    "train.jsonl",
+    "val.jsonl",
+    "test.jsonl",
+    "golden.jsonl",
+    "train_dataset.jsonl",
+    "val_dataset.jsonl",
+}
 
 
 def load_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def is_dataset_file(path: Path) -> bool:
+    return path.name in DATASET_FILENAMES
 
 
 def check_file(path: Path) -> list[str]:
@@ -69,7 +81,7 @@ def check_file(path: Path) -> list[str]:
 
 def main():
     data_dir = Path("data")
-    targets = list(data_dir.glob("*.jsonl"))
+    targets = [path for path in data_dir.glob("*.jsonl") if is_dataset_file(path)]
 
     if not targets:
         print("No .jsonl files found in data/")

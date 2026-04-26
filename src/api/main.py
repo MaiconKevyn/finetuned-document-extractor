@@ -11,6 +11,7 @@ from peft import PeftModel
 from typing import Any, Dict, Optional
 from src.utils import extract_json_from_text
 from src.monitoring import log_request, run_drift_report
+from src.prompts import EXTRACTION_INSTRUCTION, PROMPT_VERSION, build_alpaca_prompt
 
 # When true, uses lm-format-enforcer to constrain generation to valid JSON
 # matching the extraction schema — eliminates data:null responses by construction.
@@ -128,11 +129,7 @@ def run_inference(prompt: str) -> tuple[str, bool]:
 
 @app.post("/extract", response_model=ExtractionResponse)
 async def extract_fields(request: ExtractionRequest):
-    prompt = (
-        "### Instruction:\nExtract the following fields from the document text into a JSON format: "
-        "employee_name, gross_pay, tax, deductions, net_pay, pay_period, invoice_number.\n\n"
-        f"### Input:\n{request.text}\n\n### Response:\n"
-    )
+    prompt = build_alpaca_prompt(EXTRACTION_INSTRUCTION, request.text)
 
     async with gpu_lock:
         response_text, was_constrained = await asyncio.to_thread(run_inference, prompt)
@@ -152,6 +149,15 @@ async def extract_fields(request: ExtractionRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok", "gpu": torch.cuda.is_available()}
+
+
+@app.get("/version")
+async def version():
+    return {
+        "model_id": MODEL_ID,
+        "adapter_path": ADAPTER_PATH,
+        "prompt_version": PROMPT_VERSION,
+    }
 
 
 @app.get("/monitoring/drift")

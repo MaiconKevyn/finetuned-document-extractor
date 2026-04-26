@@ -1,6 +1,7 @@
 {
   "project": "DocTune",
   "date": "2026-04-20",
+  "prompt_version": "v1",
   "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
   "adapter_output": "models/doctune-qwen-1.5b-lora",
   "dataset": {

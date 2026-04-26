@@ -32,6 +32,9 @@ data/*.jsonl
 data/*.json
 data/logs/
 results/*.json
+!data/golden.jsonl
+!results/eval_report.json
+!results/benchmark_comparison.json
 
 # MLflow
 mlruns/
@@ -57,3 +60,7 @@ venv/
 *.log
 .kube/
 kubeconfig
+.claude
+docs/
+.codex
+assets/

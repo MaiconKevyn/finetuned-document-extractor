@@ -1,7 +1,11 @@
 import torch
 import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import mlflow
 from datasets import load_dataset
+from src.prompts import PROMPT_VERSION, build_alpaca_prompt
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -21,7 +25,7 @@ os.makedirs("models", exist_ok=True)
 os.makedirs("data/logs", exist_ok=True)
 
 def formatting_prompts_func(example):
-    return f"### Instruction:\n{example['instruction']}\n\n### Input:\n{example['input']}\n\n### Response:\n{example['output']}"
+    return build_alpaca_prompt(example["instruction"], example["input"], example["output"])
 
 
 class MLflowStepCallback(TrainerCallback):
@@ -108,17 +112,18 @@ def train():
     mlflow.set_experiment("doctune-finetune")
     with mlflow.start_run(run_name="qlora-qwen2.5-1.5b"):
         mlflow.log_params({
-            "model_id":    MODEL_ID,
-            "lora_r":      peft_config.r,
-            "lora_alpha":  peft_config.lora_alpha,
-            "lora_dropout": peft_config.lora_dropout,
-            "learning_rate": sft_config.learning_rate,
-            "num_epochs":  sft_config.num_train_epochs,
-            "batch_size":  sft_config.per_device_train_batch_size,
-            "grad_accum":  sft_config.gradient_accumulation_steps,
-            "max_length":  sft_config.max_length,
-            "optimizer":   sft_config.optim,
-            "quant_type":  bnb_config.bnb_4bit_quant_type,
+            "model_id":       MODEL_ID,
+            "prompt_version": PROMPT_VERSION,
+            "lora_r":         peft_config.r,
+            "lora_alpha":     peft_config.lora_alpha,
+            "lora_dropout":   peft_config.lora_dropout,
+            "learning_rate":  sft_config.learning_rate,
+            "num_epochs":     sft_config.num_train_epochs,
+            "batch_size":     sft_config.per_device_train_batch_size,
+            "grad_accum":     sft_config.gradient_accumulation_steps,
+            "max_length":     sft_config.max_length,
+            "optimizer":      sft_config.optim,
+            "quant_type":     bnb_config.bnb_4bit_quant_type,
         })
 
         print("Iniciando o Fine-tuning na RTX 2070 (Modo Stable Float32 Adaptor)...")

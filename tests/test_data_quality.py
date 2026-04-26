@@ -9,7 +9,7 @@ import json
 import pytest
 from pathlib import Path
 
-from scripts.check_data_quality import check_file, load_jsonl, COMPLETENESS_THRESHOLD
+from scripts.check_data_quality import check_file, load_jsonl, COMPLETENESS_THRESHOLD, is_dataset_file
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +43,14 @@ class TestLoadJsonl:
         f = _write_jsonl(tmp_path / "data.jsonl", [_record(), _record(input_text="Doc 2")])
         records = load_jsonl(f)
         assert len(records) == 2
+
+
+class TestDatasetFileFilter:
+    def test_known_dataset_file_is_included(self):
+        assert is_dataset_file(Path("data/test.jsonl"))
+
+    def test_request_log_is_excluded(self):
+        assert not is_dataset_file(Path("data/request_log.jsonl"))
 
     def test_skips_blank_lines(self, tmp_path):
         f = tmp_path / "data.jsonl"
