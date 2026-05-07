@@ -1,37 +1,176 @@
 {
   "project": "DocTune",
-  "date": "2026-04-20",
+  "date": "2026-05-07",
   "prompt_version": "v1",
-  "note": "Numeric fields compared with abs tolerance 0.5 (accounts for 4-bit drift)",
+  "dataset": {
+    "train": "data/train.jsonl",
+    "validation": "data/val.jsonl",
+    "test": "data/test.jsonl",
+    "golden": "data/golden.jsonl",
+    "train_samples": 800,
+    "val_samples": 100,
+    "test_samples": 100,
+    "golden_samples": 200
+  },
+  "note": "Synthetic test benchmark from the last full eval. Golden/OOD metrics were invalidated by the 200-record golden expansion and must be regenerated with scripts/eval_suite.py.",
   "comparison": {
     "baseline_0shot": {
-      "valid_json_rate": 0.99,
+      "valid_json_rate": 1.0,
       "field_accuracy": {
-        "employee_name": 0.79,
-        "gross_pay": 0.56,
-        "tax": 0.58,
-        "deductions": 0.58,
-        "net_pay": 0.6,
-        "pay_period": 0.82,
-        "invoice_number": 0.54
+        "employee_name": 0.83,
+        "gross_pay": 0.79,
+        "tax": 0.74,
+        "deductions": 0.74,
+        "net_pay": 0.77,
+        "pay_period": 0.84,
+        "invoice_number": 0.57
       },
-      "avg_field_accuracy": 0.6386,
-      "avg_latency_sec": 3.0062
+      "avg_field_accuracy": 0.7543,
+      "business_rule_compliance": 0.74,
+      "hallucination_rate": 0.0,
+      "accuracy_by_template": {
+        "abbreviated": 0.8163,
+        "narrative": 0.8571,
+        "key_value": 0.3609,
+        "indented": 0.9006,
+        "table": 0.8045
+      },
+      "accuracy_by_noise_bucket": {
+        "medium": 0.7543
+      },
+      "avg_latency_ms": 3225.23,
+      "latency_ms_p50": 3186.99,
+      "latency_ms_p95": 3521.4,
+      "latency_ms_p99": 3920.89,
+      "latency_ms_max": 5471.88
     },
-    "baseline_3shot": null,
+    "baseline_3shot": {
+      "valid_json_rate": 1.0,
+      "field_accuracy": {
+        "employee_name": 0.84,
+        "gross_pay": 1.0,
+        "tax": 0.98,
+        "deductions": 0.97,
+        "net_pay": 0.98,
+        "pay_period": 0.92,
+        "invoice_number": 0.77
+      },
+      "avg_field_accuracy": 0.9229,
+      "business_rule_compliance": 0.95,
+      "hallucination_rate": 0.0,
+      "accuracy_by_template": {
+        "abbreviated": 0.8027,
+        "narrative": 0.9524,
+        "key_value": 0.9398,
+        "indented": 0.9689,
+        "table": 0.9549
+      },
+      "accuracy_by_noise_bucket": {
+        "medium": 0.9229
+      },
+      "avg_latency_ms": 2832.66,
+      "latency_ms_p50": 2816.9,
+      "latency_ms_p95": 3172.54,
+      "latency_ms_p99": 3409.2,
+      "latency_ms_max": 5191.86
+    },
+    "baseline_5shot": {
+      "valid_json_rate": 1.0,
+      "field_accuracy": {
+        "employee_name": 0.85,
+        "gross_pay": 1.0,
+        "tax": 0.98,
+        "deductions": 0.98,
+        "net_pay": 0.99,
+        "pay_period": 0.93,
+        "invoice_number": 0.76
+      },
+      "avg_field_accuracy": 0.9271,
+      "business_rule_compliance": 0.96,
+      "hallucination_rate": 0.0,
+      "accuracy_by_template": {
+        "abbreviated": 0.8027,
+        "narrative": 0.9603,
+        "key_value": 0.9474,
+        "indented": 0.9627,
+        "table": 0.9699
+      },
+      "accuracy_by_noise_bucket": {
+        "medium": 0.9271
+      },
+      "avg_latency_ms": 4553.6,
+      "latency_ms_p50": 5099.66,
+      "latency_ms_p95": 5605.82,
+      "latency_ms_p99": 5844.88,
+      "latency_ms_max": 6431.23
+    },
+    "baseline_10shot": {
+      "valid_json_rate": 1.0,
+      "field_accuracy": {
+        "employee_name": 0.86,
+        "gross_pay": 1.0,
+        "tax": 0.98,
+        "deductions": 0.98,
+        "net_pay": 0.98,
+        "pay_period": 0.93,
+        "invoice_number": 0.9
+      },
+      "avg_field_accuracy": 0.9471,
+      "business_rule_compliance": 0.95,
+      "hallucination_rate": 0.0,
+      "accuracy_by_template": {
+        "abbreviated": 0.8912,
+        "narrative": 0.9603,
+        "key_value": 0.9549,
+        "indented": 0.9627,
+        "table": 0.9699
+      },
+      "accuracy_by_noise_bucket": {
+        "medium": 0.9471
+      },
+      "avg_latency_ms": 5696.98,
+      "latency_ms_p50": 5645.22,
+      "latency_ms_p95": 6239.0,
+      "latency_ms_p99": 6434.48,
+      "latency_ms_max": 6516.06
+    },
     "fine_tuned": {
       "valid_json_rate": 1.0,
       "field_accuracy": {
-        "employee_name": 0.92,
-        "gross_pay": 0.92,
-        "tax": 0.94,
-        "deductions": 0.91,
-        "net_pay": 0.99,
-        "pay_period": 0.99,
-        "invoice_number": 0.89
+        "employee_name": 0.95,
+        "gross_pay": 1.0,
+        "tax": 1.0,
+        "deductions": 0.99,
+        "net_pay": 0.98,
+        "pay_period": 1.0,
+        "invoice_number": 0.99
       },
-      "avg_field_accuracy": 0.9371,
-      "avg_latency_sec": 3.986
+      "avg_field_accuracy": 0.9871,
+      "business_rule_compliance": 0.98,
+      "hallucination_rate": 0.0,
+      "accuracy_by_template": {
+        "abbreviated": 0.9932,
+        "narrative": 1.0,
+        "key_value": 0.985,
+        "indented": 0.9938,
+        "table": 0.9624
+      },
+      "accuracy_by_noise_bucket": {
+        "medium": 0.9871
+      },
+      "avg_latency_ms": 7814.71,
+      "latency_ms_p50": 7785.76,
+      "latency_ms_p95": 8396.46,
+      "latency_ms_p99": 8748.7,
+      "latency_ms_max": 8848.38
     }
-  }
+  },
+  "generated_at": "2026-05-07T01:54:31.016575+00:00",
+  "baseline_shots": [
+    0,
+    3,
+    5,
+    10
+  ],
+  "few_shot_file": "data/train.jsonl"
 }

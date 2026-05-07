@@ -13,7 +13,9 @@ import pytest
 from scripts.evaluate import (
     values_match,
     build_prompt,
+    load_few_shot_examples,
     calculate_metrics,
+    is_missing_prediction,
     bucket_noise_level,
     business_rule_holds,
     compute_latency_stats,
@@ -98,6 +100,34 @@ class TestBuildPrompt:
         # Only 3 examples defined — asking for 10 should not raise
         prompt = build_prompt(INSTRUCTION, "doc", n_shots=10)
         assert prompt.count("### Instruction:") == 4  # 3 available + 1
+
+    def test_build_prompt_accepts_custom_examples(self):
+        examples = [
+            {"input": "example a", "output": '{"a": 1}'},
+            {"input": "example b", "output": '{"b": 2}'},
+        ]
+        prompt = build_prompt(INSTRUCTION, "real doc", n_shots=2, few_shot_examples=examples)
+        assert "example a" in prompt
+        assert "example b" in prompt
+        assert prompt.count("### Instruction:") == 3
+
+
+class TestFewShotExamples:
+    def test_load_few_shot_examples_balances_templates(self, tmp_path):
+        path = tmp_path / "train.jsonl"
+        records = [
+            {"input": "a1", "output": '{"x": 1}', "template_id": "a"},
+            {"input": "a2", "output": '{"x": 2}', "template_id": "a"},
+            {"input": "b1", "output": '{"x": 3}', "template_id": "b"},
+            {"input": "b2", "output": '{"x": 4}', "template_id": "b"},
+        ]
+        path.write_text("\n".join(json.dumps(record) for record in records))
+        examples = load_few_shot_examples(str(path), 3)
+        assert [ex["input"] for ex in examples] == ["a1", "b1", "a2"]
+
+    def test_load_few_shot_examples_falls_back_to_builtin_examples(self):
+        examples = load_few_shot_examples("/does/not/exist.jsonl", 2)
+        assert examples == FEW_SHOT_EXAMPLES[:2]
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +226,14 @@ class TestCalculateMetrics:
         assert metrics["accuracy_by_template"]["narrative"] == 1.0
         assert metrics["accuracy_by_template"]["table"] < 1.0
 
+    def test_accuracy_by_category_uses_metadata(self):
+        gt = self._make_gt()
+        wrong = self._make_gt(employee_name="Wrong")
+        metadata = [{"golden_category": "pt_br"}, {"golden_category": "heavy_ocr"}]
+        metrics = calculate_metrics([gt.copy(), wrong], [gt, gt], sample_metadata=metadata)
+        assert metrics["accuracy_by_category"]["pt_br"] == 1.0
+        assert metrics["accuracy_by_category"]["heavy_ocr"] < 1.0
+
     def test_accuracy_by_noise_bucket_uses_metadata(self):
         gt = self._make_gt()
         wrong = self._make_gt(employee_name="Wrong")
@@ -207,6 +245,12 @@ class TestCalculateMetrics:
     def test_hallucination_rate_counts_non_null_prediction_when_gt_is_null(self):
         gt = self._make_gt(invoice_number=None)
         pred = self._make_gt(invoice_number="84201")
+        metrics = calculate_metrics([pred], [gt])
+        assert metrics["hallucination_rate"] == 1.0
+
+    def test_hallucination_rate_handles_object_prediction_when_gt_is_null(self):
+        gt = self._make_gt(invoice_number=None)
+        pred = self._make_gt(invoice_number={"value": "84201"})
         metrics = calculate_metrics([pred], [gt])
         assert metrics["hallucination_rate"] == 1.0
 
@@ -253,6 +297,11 @@ class TestEvaluationHelpers:
         stats = compute_latency_stats([0.1, 0.2, 0.3])
         assert stats["avg_latency_ms"] == 200.0
         assert stats["latency_ms_p95"] > stats["latency_ms_p50"]
+
+    def test_is_missing_prediction_rejects_unhashable_values(self):
+        assert not is_missing_prediction({"value": None})
+        assert not is_missing_prediction(["null"])
+        assert is_missing_prediction(None)
 
     def test_append_failure_log_writes_jsonl_records(self, tmp_path):
         path = tmp_path / "failure_log.jsonl"

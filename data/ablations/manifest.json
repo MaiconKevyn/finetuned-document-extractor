@@ -1,0 +1,53 @@
+{
+  "base_train_file": "data/train.jsonl",
+  "val_file": "data/val.jsonl",
+  "test_file": "data/test.jsonl",
+  "golden_eval_file": "data/golden.jsonl",
+  "golden_like_pool": "data/ablations/golden_like_pool.jsonl",
+  "variants": [
+    {
+      "name": "synthetic_800",
+      "train_file": "data/ablations/synthetic_800/train.jsonl",
+      "train_samples": 800,
+      "synthetic_samples": 800,
+      "golden_like_samples": 0,
+      "val_file": "data/val.jsonl",
+      "adapter_path": "models/ablations/synthetic_800",
+      "eval_json": "results/ablations/synthetic_800_eval.json",
+      "eval_md": "results/ablations/synthetic_800_eval.md"
+    },
+    {
+      "name": "synthetic_800_plus_50_golden_like",
+      "train_file": "data/ablations/synthetic_800_plus_50_golden_like/train.jsonl",
+      "train_samples": 850,
+      "synthetic_samples": 800,
+      "golden_like_samples": 50,
+      "val_file": "data/val.jsonl",
+      "adapter_path": "models/ablations/synthetic_800_plus_50_golden_like",
+      "eval_json": "results/ablations/synthetic_800_plus_50_golden_like_eval.json",
+      "eval_md": "results/ablations/synthetic_800_plus_50_golden_like_eval.md"
+    },
+    {
+      "name": "synthetic_800_plus_100_golden_like",
+      "train_file": "data/ablations/synthetic_800_plus_100_golden_like/train.jsonl",
+      "train_samples": 900,
+      "synthetic_samples": 800,
+      "golden_like_samples": 100,
+      "val_file": "data/val.jsonl",
+      "adapter_path": "models/ablations/synthetic_800_plus_100_golden_like",
+      "eval_json": "results/ablations/synthetic_800_plus_100_golden_like_eval.json",
+      "eval_md": "results/ablations/synthetic_800_plus_100_golden_like_eval.md"
+    },
+    {
+      "name": "synthetic_800_plus_200_golden_like",
+      "train_file": "data/ablations/synthetic_800_plus_200_golden_like/train.jsonl",
+      "train_samples": 1000,
+      "synthetic_samples": 800,
+      "golden_like_samples": 200,
+      "val_file": "data/val.jsonl",
+      "adapter_path": "models/ablations/synthetic_800_plus_200_golden_like",
+      "eval_json": "results/ablations/synthetic_800_plus_200_golden_like_eval.json",
+      "eval_md": "results/ablations/synthetic_800_plus_200_golden_like_eval.md"
+    }
+  ]
+}

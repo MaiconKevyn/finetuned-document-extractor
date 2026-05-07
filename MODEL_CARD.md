@@ -36,35 +36,36 @@ The model is designed for English-language payslips in American numeric format (
 
 ## Training Data
 
-1,000 synthetic payslips generated with Faker across 5 document templates, with simulated OCR noise applied to non-digit characters. Dataset was split 900/100 (train/val). No real personal data was used.
+1,000 synthetic payslips generated with Faker across 5 document templates, with simulated OCR noise applied to non-digit characters. The current repository split is 800/100/100 (train/validation/test), plus a small handcrafted golden set for edge cases. No real personal data was used.
 
 See [The Dataset](README.md#the-dataset) section in the README for full details on generation methodology, templates, and noise design.
 
 ## Evaluation
 
-Evaluated on 100 held-out samples. Numeric fields compared with absolute tolerance ±0.5 (accounts for 4-bit quantization drift).
+The current benchmark is evaluated on `data/test.jsonl` with 100 held-out samples. Numeric fields are compared with absolute tolerance ±0.5 (accounts for 4-bit quantization drift). Prompt-only few-shot baselines use deterministic, template-balanced examples from `data/train.jsonl`. The OOD golden benchmark now contains 200 categorized records; regenerate current test and golden-set reports with `python scripts/eval_suite.py` before making a new model-selection decision.
 
-### Comparison: Base 0-shot vs Fine-tuned
+### Current test-set comparison
 
-| Metric | Base 0-shot | Fine-tuned |
-|---|---|---|
-| Valid JSON Rate | 99.0% | **100.0%** |
-| Avg Field Accuracy | 63.86% | **93.71%** |
-| Avg Latency / sample | 3.006s | 3.986s |
+| Metric | Base 0-shot | Base 3-shot | Base 5-shot | Base 10-shot | Fine-tuned |
+|---|---:|---:|---:|---:|---:|
+| Valid JSON Rate | 100.0% | 100.0% | 100.0% | 100.0% | **100.0%** |
+| Avg Field Accuracy | 75.43% | 92.29% | 92.71% | 94.71% | **98.71%** |
+| Business Rule Compliance | 74.0% | 95.0% | 96.0% | 95.0% | **98.0%** |
+| p95 Latency / sample | 3.521s | **3.173s** | 5.606s | 6.239s | 8.396s |
 
-> `evaluate.py` also supports a 3-shot baseline (`n_shots=3`). Run it to populate `results/artifact_results.json` with the 3-shot column if needed.
+The last full test-set comparison above remains useful for the synthetic holdout. The old golden comparison was superseded by the expanded 200-record OOD set. A limited smoke run lives in `results/golden_smoke_eval.md`; a full golden benchmark should be run as a longer GPU job.
 
 ### Per-field accuracy (fine-tuned)
 
 | Field | Accuracy |
 |---|---|
-| `employee_name` | 92% |
-| `gross_pay` | 92% |
-| `tax` | 94% |
-| `deductions` | 91% |
-| `net_pay` | 99% |
-| `pay_period` | 99% |
-| `invoice_number` | 89% |
+| `employee_name` | 95% |
+| `gross_pay` | 100% |
+| `tax` | 100% |
+| `deductions` | 99% |
+| `net_pay` | 98% |
+| `pay_period` | 100% |
+| `invoice_number` | 99% |
 
 ## Limitations
 
@@ -72,9 +73,9 @@ Evaluated on 100 held-out samples. Numeric fields compared with absolute toleran
 
 **Quantization drift:** 4-bit NF4 quantization can shift numeric outputs by up to ~1.0 in absolute value. The evaluation uses a ±0.5 tolerance to account for this. Applications requiring cent-level precision should post-process or use the `raw_response` field.
 
-**Hallucination risk:** The model may generate plausible but incorrect values for fields that are ambiguous or absent in the input. The API does not currently score confidence — all fields are returned with equal weight. Downstream applications should treat low-confidence fields (e.g., fields not literally present in the input) with caution.
+**Hallucination risk:** The model may generate plausible but incorrect values for fields that are ambiguous or absent in the input. The API now returns validation flags and a coarse confidence label, but downstream applications should still treat low-confidence fields and missing-source fields with caution.
 
-**Dataset size:** 900 training samples is small. The model generalizes well across the 5 trained templates but may degrade on novel layouts not seen during training.
+**Dataset size:** 800 training samples is small. The model generalizes well across the 5 trained templates, but the expanded 200-record OOD golden set is the next gate for judging robustness.
 
 ## Ethical Considerations
 
@@ -111,7 +112,7 @@ See [Fine-tuning Details](README.md#fine-tuning-details) in the README for the f
 |---|---|
 | Training script | `scripts/finetune.py` |
 | Dataset generator | `scripts/generate_dataset.py` |
-| Evaluation script | `scripts/evaluate.py` |
+| Evaluation scripts | `scripts/evaluate.py`, `scripts/eval_suite.py` |
 | Training run record | `results/training_run.json` |
 | Benchmark results | `results/artifact_results.json` |
 | LoRA adapter | `models/doctune-qwen-1.5b-lora/` |

@@ -1,0 +1,40 @@
+{
+  "project": "DocTune",
+  "objective": "Measure whether adding representative golden-like OOD examples to the SFT data improves golden/OOD extraction without regressing the held-out synthetic test set.",
+  "base_model": "models/Qwen2.5-1.5B-Instruct",
+  "base_train_file": "data/train.jsonl",
+  "val_file": "data/val.jsonl",
+  "test_file": "data/test.jsonl",
+  "golden_eval_file": "data/golden.jsonl",
+  "output_root": "data/ablations",
+  "adapter_root": "models/ablations",
+  "results_root": "results/ablations",
+  "golden_like_pool": {
+    "records_per_category": 20,
+    "seed": 20260508
+  },
+  "training": {
+    "lora_r": 16,
+    "learning_rate": 0.0001,
+    "epochs": 3,
+    "seed": 42
+  },
+  "variants": [
+    {
+      "name": "synthetic_800",
+      "golden_like_count": 0
+    },
+    {
+      "name": "synthetic_800_plus_50_golden_like",
+      "golden_like_count": 50
+    },
+    {
+      "name": "synthetic_800_plus_100_golden_like",
+      "golden_like_count": 100
+    },
+    {
+      "name": "synthetic_800_plus_200_golden_like",
+      "golden_like_count": 200
+    }
+  ]
+}

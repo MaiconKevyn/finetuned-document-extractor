@@ -110,8 +110,16 @@ def run_drift_report() -> dict:
     cur_dataset = Dataset.from_pandas(cur_df, data_definition=definition)
 
     report = Report([DataDriftPreset()])
-    result = report.run(reference_data=ref_dataset, current_data=cur_dataset)
-    result_dict = result.dict()
+    try:
+        result = report.run(reference_data=ref_dataset, current_data=cur_dataset)
+        result_dict = result.dict()
+    except Exception as exc:
+        return {
+            "status": "error",
+            "message": f"Drift report failed: {exc}",
+            "logged_requests": len(current_rows),
+            "reference_samples": len(reference_rows),
+        }
 
     # Extract top-level drift summary
     drift_detected = False

@@ -91,6 +91,27 @@ class TestExtractEndpoint:
         }
         assert expected_fields.issubset(set(data["data"].keys()))
 
+    def test_response_includes_request_id(self, client):
+        data = client.post("/extract", json=self.VALID_PAYLOAD).json()
+        assert "request_id" in data
+        assert isinstance(data["request_id"], str)
+
+    def test_response_includes_quality_flags(self, client):
+        data = client.post("/extract", json=self.VALID_PAYLOAD).json()
+        assert data["flags"]["extraction_success"] is True
+        assert data["flags"]["valid_schema"] is True
+        assert data["flags"]["business_rule_valid"] is True
+        assert data["flags"]["confidence"] == "high"
+
+    def test_request_id_header_is_propagated(self, client):
+        response = client.post(
+            "/extract",
+            headers={"x-request-id": "req-123"},
+            json=self.VALID_PAYLOAD,
+        )
+        assert response.headers["x-request-id"] == "req-123"
+        assert response.json()["request_id"] == "req-123"
+
 
 # ---------------------------------------------------------------------------
 # Model failure behaviour
@@ -138,6 +159,36 @@ class TestModelFailureBehaviour:
         response = client.post("/extract", json={"text": "Employee: Test"})
         assert "constrained" in response.json()
         assert isinstance(response.json()["constrained"], bool)
+
+    def test_invalid_json_response_includes_failure_flags(self, client):
+        import src.api.main as main_module
+        original_decode = main_module.tokenizer.decode
+
+        main_module.tokenizer.decode = lambda *a, **kw: "### Response:\nno json"
+        try:
+            response = client.post("/extract", json={"text": "some document"})
+            flags = response.json()["flags"]
+            assert flags["extraction_success"] is False
+            assert flags["valid_schema"] is False
+            assert flags["confidence"] == "low"
+            assert flags["failure_reason"] == "invalid_json"
+        finally:
+            main_module.tokenizer.decode = original_decode
+
+
+class TestBatchAndMetrics:
+    def test_batch_endpoint_returns_one_result_per_text(self, client):
+        response = client.post("/extract/batch", json={"texts": ["Employee: A", "Employee: B"]})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["results"]) == 2
+        assert all("request_id" in item for item in data["results"])
+
+    def test_metrics_endpoint_is_prometheus_text(self, client):
+        response = client.get("/metrics")
+        assert response.status_code == 200
+        assert "doctune_extract_requests_total" in response.text
+        assert response.headers["content-type"].startswith("text/plain")
 
 
 # ---------------------------------------------------------------------------

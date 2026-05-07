@@ -2,174 +2,145 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Transformers](https://img.shields.io/badge/transformers-4.47.1-yellow.svg)](https://github.com/huggingface/transformers)
-[![PEFT](https://img.shields.io/badge/PEFT-0.14.0-orange.svg)](https://github.com/huggingface/peft)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115.6-009688.svg)](https://fastapi.tiangolo.com/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
 [![Model](https://img.shields.io/badge/Qwen-2.5--1.5B--Instruct-red.svg)](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct)
+[![Fine-tuning](https://img.shields.io/badge/QLoRA-LoRA%20adapters-orange.svg)](https://github.com/huggingface/peft)
+[![Serving](https://img.shields.io/badge/FastAPI-inference-009688.svg)](https://fastapi.tiangolo.com/)
 
-> A compact QLoRA fine-tuning pipeline for structured payroll document extraction. DocTune generates synthetic noisy payslips, fine-tunes Qwen2.5-1.5B-Instruct with LoRA adapters, benchmarks the gain against the base model, and serves the resulting extractor through FastAPI.
+DocTune is an AI Engineering portfolio project focused on one concrete research question:
 
-## Table of Contents
-- [Overview](#overview)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Technology Stack](#technology-stack)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Configuration](#configuration)
-  - [Running the Application](#running-the-application)
-- [Usage](#usage)
-- [Dataset](#dataset)
-- [Benchmark](#benchmark)
-- [Fine-tuning Details](#fine-tuning-details)
-- [Monitoring](#monitoring)
-- [Testing](#testing)
-- [Model Card](#model-card)
-- [License](#license)
+> Can a small open model become a reliable structured payroll-document extractor after targeted QLoRA fine-tuning, and can the result be served with production-minded evaluation, monitoring, and API contracts?
 
-## Overview
-**DocTune** is a focused document extraction project built to answer one practical question: how much can a small open model improve at structured field extraction after targeted fine-tuning?
+The project trains a LoRA adapter on top of `Qwen/Qwen2.5-1.5B-Instruct` to extract seven fields from noisy payslip-like documents:
 
-The repository covers the full lifecycle:
-- synthetic dataset generation for payroll-like documents
-- OCR-style noise injection to simulate messy real-world inputs
-- QLoRA fine-tuning on a single 8GB GPU
-- reproducible evaluation against the base model
-- FastAPI inference service with optional constrained JSON generation
-- lightweight request logging and drift monitoring
+```text
+employee_name, gross_pay, tax, deductions, net_pay, pay_period, invoice_number
+```
 
-### Key Capabilities
-- **Structured JSON extraction**: extracts `employee_name`, `gross_pay`, `tax`, `deductions`, `net_pay`, `pay_period`, and `invoice_number`
-- **Noise-aware training**: learns from synthetic documents with broken lines and corrupted characters
-- **Low-cost fine-tuning**: uses 4-bit QLoRA to train a 1.5B model on consumer hardware
-- **Benchmark-first workflow**: compares base and fine-tuned behavior on held-out data
-- **Production-ready serving path**: exposes `/extract`, `/health`, and `/monitoring/drift`
+## Why This Project Exists
 
-## Features
-- **Synthetic data generation**: produces labeled payslip samples with deterministic structure
-- **Multi-template coverage**: trains on five layout styles to avoid single-template overfitting
-- **OCR noise simulation**: corrupts non-digit characters while preserving label correctness
-- **QLoRA fine-tuning**: trains lightweight adapters instead of full model weights
-- **4-bit inference**: serves the model with reduced VRAM requirements
-- **Optional constrained generation**: can enforce valid JSON output via `lm-format-enforcer`
-- **Drift monitoring**: tracks request distribution against training data features
+Most document-extraction demos stop at prompting a large commercial model. DocTune is designed to show the full AI Engineering path:
 
-## Architecture
-![Fine-Tuning Project Architecture](assets/arch.png)
+1. Build a controlled synthetic dataset with OCR-like noise.
+2. Establish prompt-only baselines.
+3. Fine-tune a compact model with QLoRA on consumer hardware.
+4. Evaluate with field accuracy, JSON validity, hallucination checks, business-rule checks, latency percentiles, and failure logs.
+5. Serve the model behind a FastAPI contract with request IDs, validation flags, batch extraction, and Prometheus-style metrics.
 
-## Technology Stack
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| **Base model** | Qwen2.5-1.5B-Instruct | Instruction-tuned foundation model |
-| **Fine-tuning** | PEFT LoRA + TRL SFTTrainer | Adapter-based supervised fine-tuning |
-| **Quantization** | BitsAndBytes NF4 4-bit | Makes training and inference fit on 8GB VRAM |
-| **Framework** | Transformers 4.47.1 | Model loading and generation |
-| **API** | FastAPI + Uvicorn | HTTP inference service |
-| **Monitoring** | MLflow + Evidently | Training tracking and drift detection |
-| **Containerization** | Docker + Docker Compose | GPU-backed serving environment |
-| **Data generation** | Faker + Pydantic | Synthetic sample creation and label schema |
+## Current Result Snapshot
 
-## Project Structure
+The current `data/test.jsonl` report compares fine-tuning against stronger prompt-only baselines. Few-shot examples are selected deterministically from `data/train.jsonl` and balanced across templates.
+
+| System | Valid JSON | Avg Field Accuracy | Business Rule | p95 Latency |
+|---|---:|---:|---:|---:|
+| Qwen2.5-1.5B 0-shot | 100.0% | 75.43% | 74.0% | 3.521s |
+| Qwen2.5-1.5B 3-shot | 100.0% | 92.29% | 95.0% | 3.173s |
+| Qwen2.5-1.5B 5-shot | 100.0% | 92.71% | 96.0% | 5.606s |
+| Qwen2.5-1.5B 10-shot | 100.0% | 94.71% | 95.0% | 6.239s |
+| DocTune LoRA | 100.0% | 98.71% | 98.0% | 8.396s |
+
+The stronger 10-shot baseline is valid and useful: it closes much of the gap without training. The adapter still wins on the held-out synthetic test set by about 4 percentage points of average field accuracy and is especially stronger on invoice numbers, pay periods, and payroll arithmetic consistency.
+
+The OOD benchmark has been expanded from an 8-record smoke set to a 200-record categorized `data/golden.jsonl`. The old golden metrics should no longer be treated as current. A limited smoke run is checked in at `results/golden_smoke_eval.md`; the full 200-record golden benchmark should be regenerated as a longer GPU job before making a new model decision.
+
+The repository now uses a `800/100/100` train/validation/test split. Regenerate the full current report with:
+
 ```bash
-finetuned-document-extractor/
-├── src/
-│   ├── api/
-│   │   └── main.py                    # FastAPI app and model loading
-│   ├── monitoring.py                  # Request logging and drift report
-│   └── utils.py                       # JSON extraction helpers
-├── scripts/
-│   ├── generate_dataset.py            # Synthetic noisy payslip generation
-│   ├── finetune.py                    # QLoRA training pipeline
-│   ├── evaluate.py                    # Base vs fine-tuned benchmark
-│   ├── merge_adapter.py               # Merge LoRA into standalone weights
-│   ├── check_data_quality.py          # Dataset quality gate
-│   ├── split_data.py                  # Dataset splitting utility
-│   ├── test_model_load.py             # Local model loading smoke test
-│   └── verify_model_integrity.py      # Model checksum validation
-├── data/                              # Train/validation data and request logs
-├── models/                            # Base model mount point and LoRA adapter output
-├── results/                           # Training and benchmark artifacts
-├── tests/                             # API, monitoring, evaluation, and data tests
-├── Dockerfile
-├── docker-compose.yml
-├── MODEL_CARD.md
-├── LICENSE
-└── README.md
+python scripts/eval_suite.py \
+  --model-id models/Qwen2.5-1.5B-Instruct \
+  --adapter-path models/doctune-qwen-1.5b-lora
 ```
 
-## Getting Started
-### Prerequisites
-- **Python**: 3.11
-- **Docker** and **Docker Compose**
-- **NVIDIA GPU**: CUDA 12.4-compatible runtime for containerized inference
-- **Model files**: local base model directory and LoRA adapter directory under `models/`
+This writes:
 
-### Installation
-1. **Clone the repository**
+- `results/eval_report.json`
+- `results/eval_report.md`
+
+The full report should include 0-shot, 3-shot, 5-shot, 10-shot, few-shot + postprocess, and fine-tuned runs on both `data/test.jsonl` and `data/golden.jsonl`.
+
+## Fine-tuning Method
+
+DocTune uses QLoRA:
+
+| Component | Choice |
+|---|---|
+| Base model | `Qwen/Qwen2.5-1.5B-Instruct` |
+| Adapter method | PEFT LoRA |
+| Quantization | NF4 4-bit via BitsAndBytes |
+| LoRA rank | 16 in the baseline adapter |
+| Target modules | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` |
+| Hardware target | NVIDIA RTX 2070 8GB |
+
+The training script is parameterized for research runs:
+
 ```bash
-git clone <repo-url>
-cd finetuned-document-extractor
+python scripts/finetune.py \
+  --model-id Qwen/Qwen2.5-1.5B-Instruct \
+  --lora-r 16 \
+  --learning-rate 1e-4 \
+  --epochs 3 \
+  --seed 42
 ```
 
-2. **Create a virtual environment**
+## Fine-tuning Research Pack
+
+To make the project read as AI Research instead of a single lucky run, DocTune includes an ablation plan:
+
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python scripts/finetuning_research_pack.py plan
 ```
 
-3. **Prepare model directories**
-```bash
-mkdir -p models
-```
+The generated plan covers:
 
-Place the following assets under `models/`:
-- `Qwen2.5-1.5B-Instruct/` for the base model
-- `doctune-qwen-1.5b-lora/` for the trained adapter
+| Experiment | Values |
+|---|---|
+| LoRA rank | `4`, `8`, `16` |
+| Learning rate | `5e-5`, `1e-4` |
+| Winner seeds | `42`, `123`, `7` |
+| Reported metrics | accuracy, JSON validity, business rule, hallucination, p95/p99 latency, adapter size, training time |
 
-### Configuration
-Create a `.env` file based on `.env.example`:
+Decision rule: pick the smallest adapter within 1 percentage point of the best test accuracy unless latency, hallucination, or business-rule compliance regresses materially.
 
-```env
-MODEL_ID=/app/models/Qwen2.5-1.5B-Instruct
-ADAPTER_PATH=/app/models/doctune-qwen-1.5b-lora
-HF_HOME=/tmp/hf
-USE_CONSTRAINED_GENERATION=false
-```
+## Evaluation Design
 
-### Running the Application
-1. **Start the API**
-```bash
-docker compose up
-```
+DocTune separates evaluation into:
 
-2. **Verify service health**
-```bash
-curl http://localhost:8000/health
-```
+| Dataset | Purpose |
+|---|---|
+| `data/train.jsonl` | SFT training data |
+| `data/val.jsonl` | validation / early stopping / hyperparameter selection |
+| `data/test.jsonl` | release-quality held-out benchmark |
+| `data/golden.jsonl` | 200 categorized OOD edge cases: missing fields, PT-BR/EU formats, heavy OCR noise, unseen templates |
+| `data/ablations/*/train.jsonl` | controlled training mixtures for synthetic-only vs synthetic + golden-like data |
 
-3. **Run an extraction request**
-```bash
-curl -s -X POST http://localhost:8000/extract \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Employee: Jane Doe\nInvoice #: 84201\nPeriod: March 2025\nGross: $6200.00\nTax Amount: $1240.00\nDeductions: $300.00\nTotal Net: $4660.00"}'
-```
+Core metrics:
 
-## Usage
-### Training Workflow
-```bash
-python scripts/generate_dataset.py
-python scripts/check_data_quality.py
-python scripts/finetune.py
-python scripts/evaluate.py
-```
+- valid JSON rate
+- per-field accuracy
+- average field accuracy
+- payroll arithmetic check: `gross_pay - tax - deductions ~= net_pay`
+- hallucination rate for null ground-truth fields
+- template, OOD category, and noise breakdown
+- p50/p95/p99 latency
+- failure examples persisted through `data/failure_log.jsonl`
 
-### API Response Shape
+## Serving Path
+
+The FastAPI service exposes:
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /extract` | single-document extraction |
+| `POST /extract/batch` | sequential batch extraction with one GPU lock |
+| `GET /health` | service and CUDA availability |
+| `GET /version` | model, adapter, and prompt version |
+| `GET /monitoring/drift` | Evidently drift report over request metadata |
+| `GET /metrics` | Prometheus-compatible counters |
+
+Response example:
+
 ```json
 {
+  "request_id": "req-123",
   "data": {
     "employee_name": "Jane Doe",
     "gross_pay": 6200.0,
@@ -180,134 +151,106 @@ python scripts/evaluate.py
     "invoice_number": "84201"
   },
   "raw_response": "...",
-  "constrained": false
+  "constrained": false,
+  "flags": {
+    "extraction_success": true,
+    "valid_schema": true,
+    "business_rule_valid": true,
+    "confidence": "high",
+    "failure_reason": null
+  }
 }
 ```
 
-### Merge the Adapter
-If you want a standalone model without PEFT loading overhead:
-
-```bash
-python scripts/merge_adapter.py \
-  --base models/Qwen2.5-1.5B-Instruct \
-  --adapter models/doctune-qwen-1.5b-lora \
-  --output models/doctune-qwen-1.5b-merged
-```
-
 ## Dataset
+
 The dataset is fully synthetic and contains no real payroll data.
 
-### Data Design
-- **1,000 samples** generated with Faker
-- **Split**: 900 train / 100 validation
-- **Five document templates**: key-value, abbreviated labels, narrative, table-like, and indented summary
-- **Seven output fields**: fixed extraction schema serialized as JSON
+Current split:
 
-### OCR Noise Simulation
-The generator applies two forms of noise:
-1. **Character corruption**: around 2% of eligible non-digit characters are replaced with symbols
-2. **Spurious line breaks**: random line fragmentation is inserted in roughly half of the samples
+| Split | Samples |
+|---|---:|
+| Train | 800 |
+| Validation | 100 |
+| Test | 100 |
+| Golden | 8 |
 
-Digits are intentionally preserved to avoid contaminating numeric labels.
+Generation features:
 
-### Target Fields
-| Field | Type | Example |
-|-------|------|---------|
-| `employee_name` | string | `Jane Doe` |
-| `gross_pay` | float | `6200.00` |
-| `tax` | float | `1240.00` |
-| `deductions` | float | `300.00` |
-| `net_pay` | float | `4660.00` |
-| `pay_period` | string | `March 2025` |
-| `invoice_number` | string | `84201` |
+- five templates: key-value, abbreviated labels, narrative, table-like, indented summary
+- deterministic seed
+- OCR-style character corruption
+- random line breaks
+- metadata fields: `template_id`, `noise_level`
 
-## Benchmark
-Evaluated on **100 held-out samples** using 4-bit inference for both models.
-
-### Overall
-| Metric | Base Model | Fine-tuned (DocTune) | Delta |
-|---|---|---|---|
-| Valid JSON Rate | 99.0% | **100.0%** | +1.0pp |
-| Avg Field Accuracy | 63.86% | **93.71%** | +29.85pp |
-| Avg Latency / sample | 3.006s | 3.986s | +32.6% |
-
-### Per-field Accuracy
-| Field | Base Model | Fine-tuned | Delta |
-|---|---|---|---|
-| `employee_name` | 79% | 92% | +13pp |
-| `gross_pay` | 56% | 92% | +36pp |
-| `tax` | 58% | 94% | +36pp |
-| `deductions` | 58% | 91% | +33pp |
-| `net_pay` | 60% | **99%** | +39pp |
-| `pay_period` | 82% | **99%** | +17pp |
-| `invoice_number` | 54% | 89% | +35pp |
-
-The main gain comes from field semantics and numeric extraction accuracy rather than JSON formatting, since the base model already follows the response format well.
-
-## Fine-tuning Details
-### Method
-DocTune uses **QLoRA** on top of `Qwen/Qwen2.5-1.5B-Instruct`, freezing base weights in 4-bit and training only low-rank adapters.
-
-### Quantization
-| Parameter | Value | Purpose |
-|---|---|---|
-| `load_in_4bit` | `True` | Shrinks VRAM usage |
-| `bnb_4bit_quant_type` | `nf4` | Better 4-bit distribution for neural weights |
-| `bnb_4bit_compute_dtype` | `float16` | Stable inference compute dtype |
-| `bnb_4bit_use_double_quant` | `True` | Extra memory reduction during training |
-| `torch_dtype` | `float32` in training | Avoids RTX 2070 mixed-precision instability |
-
-### LoRA Configuration
-| Parameter | Value |
-|---|---|
-| `r` | `16` |
-| `lora_alpha` | `32` |
-| `lora_dropout` | `0.05` |
-| `bias` | `none` |
-| `target_modules` | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` |
-
-### Training Hyperparameters
-| Parameter | Value |
-|---|---|
-| `per_device_train_batch_size` | `1` |
-| `gradient_accumulation_steps` | `8` |
-| `learning_rate` | `1e-4` |
-| `num_train_epochs` | `3` |
-| `warmup_steps` | `10` |
-| `optimizer` | `paged_adamw_32bit` |
-| `max_length` | `512` |
-| `eval_strategy` | `steps` |
-
-### Hardware
-Training was designed for a single **NVIDIA RTX 2070 8GB** GPU.
-
-## Monitoring
-The API includes lightweight runtime monitoring:
-- `log_request()` appends request metadata to `data/request_log.jsonl`
-- `/monitoring/drift` compares current request distributions with `data/train.jsonl`
-- drift features currently include `text_length` and `field_count`
-
-The drift report requires at least **30 logged requests** before returning a reliable comparison.
-
-## Testing
-Run the test suite with:
+Regenerate:
 
 ```bash
-pytest
+python scripts/generate_dataset.py
+python scripts/check_data_quality.py
 ```
 
-The repository includes tests for:
-- API behavior
-- monitoring utilities
-- evaluation helpers
-- data quality checks
+## Local Setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+For GPU inference, place local assets under `models/`:
+
+```text
+models/Qwen2.5-1.5B-Instruct/
+models/doctune-qwen-1.5b-lora/
+```
+
+Run the API:
+
+```bash
+docker compose up
+```
+
+Smoke test local model loading:
+
+```bash
+python scripts/smoke_model_load.py
+```
+
+## Testing
+
+Unit tests are GPU-free and restricted to `tests/`:
+
+```bash
+./.venv/bin/python -m pytest tests -q
+```
+
+Data quality:
+
+```bash
+python scripts/check_data_quality.py
+```
+
+## Limitations
+
+- The trained adapter is scoped to payroll-like text, not arbitrary documents.
+- The baseline dataset is synthetic; the golden set intentionally probes out-of-distribution behavior.
+- Current serving serializes GPU access to avoid CUDA OOM on an 8GB RTX 2070.
+- Accuracy should be reported from regenerated `results/eval_report.*` before claiming a new model version.
+- PT-BR/EU numeric formats are edge cases unless explicitly included in future training data.
+
+## Next Experiments
+
+1. Complete the ablation grid and publish `mean ± std` across three seeds.
+2. Add dataset lineage hashes to `MODEL_CARD.md`.
+3. Compare against commercial API baselines with `scripts/benchmark_apis.py`.
+4. Add DPO/ORPO only if the failure log shows preference-style errors.
+5. Promote a model version through MLflow registry and document rollback/canary criteria.
 
 ## Model Card
-See [MODEL_CARD.md](MODEL_CARD.md) for intended use, limitations, ethical considerations, and artifact lineage.
+
+See [MODEL_CARD.md](MODEL_CARD.md) for intended use, limitations, ethics, and artifact lineage.
 
 ## License
-This project is licensed under the **MIT License**.
 
-See [LICENSE](LICENSE) for the full text.
-
-Copyright (c) 2026 Maicon Kevyn
+MIT. See [LICENSE](LICENSE).

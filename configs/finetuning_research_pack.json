@@ -1,0 +1,35 @@
+{
+  "project": "DocTune",
+  "objective": "Measure whether QLoRA fine-tuning improves structured payroll extraction beyond prompt-only baselines while controlling for adapter rank, learning rate, and seed variance.",
+  "datasets": {
+    "train": "data/train.jsonl",
+    "validation": "data/val.jsonl",
+    "test": "data/test.jsonl",
+    "golden": "data/golden.jsonl"
+  },
+  "base_model": "models/Qwen2.5-1.5B-Instruct",
+  "baseline_adapter": "models/doctune-qwen-1.5b-lora",
+  "ablation_grid": [
+    {"name": "r4_lr5e-5", "lora_r": 4, "learning_rate": 0.00005, "lora_dropout": 0.05, "epochs": 3, "seed": 42},
+    {"name": "r4_lr1e-4", "lora_r": 4, "learning_rate": 0.0001, "lora_dropout": 0.05, "epochs": 3, "seed": 42},
+    {"name": "r8_lr5e-5", "lora_r": 8, "learning_rate": 0.00005, "lora_dropout": 0.05, "epochs": 3, "seed": 42},
+    {"name": "r8_lr1e-4", "lora_r": 8, "learning_rate": 0.0001, "lora_dropout": 0.05, "epochs": 3, "seed": 42},
+    {"name": "r16_lr5e-5", "lora_r": 16, "learning_rate": 0.00005, "lora_dropout": 0.05, "epochs": 3, "seed": 42},
+    {"name": "r16_lr1e-4", "lora_r": 16, "learning_rate": 0.0001, "lora_dropout": 0.05, "epochs": 3, "seed": 42}
+  ],
+  "winner_seed_sweep": {
+    "base_config_name": "r16_lr1e-4",
+    "seeds": [42, 123, 7]
+  },
+  "metrics": [
+    "avg_field_accuracy",
+    "valid_json_rate",
+    "business_rule_compliance",
+    "hallucination_rate",
+    "latency_ms_p50",
+    "latency_ms_p95",
+    "latency_ms_p99",
+    "adapter_size_mb",
+    "training_time_minutes"
+  ]
+}

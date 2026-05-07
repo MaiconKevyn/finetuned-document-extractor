@@ -2,7 +2,7 @@ import json
 import os
 import sys
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,6 +14,7 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for lightweight test 
         return iterable
 
 from src.prompts import EXTRACTION_INSTRUCTION as INSTRUCTION, PROMPT_VERSION, build_alpaca_prompt
+from src.postprocess import normalize_extraction
 from src.utils import extract_json_from_text
 
 NUMERIC_FIELDS = {"gross_pay", "tax", "deductions", "net_pay"}
@@ -57,7 +58,7 @@ FEW_SHOT_EXAMPLES = [
 
 def values_match(field: str, pred_val, gt_val) -> bool:
     if gt_val is None:
-        return pred_val in MISSING_PREDICTION_VALUES
+        return is_missing_prediction(pred_val)
 
     if field in NUMERIC_FIELDS:
         try:
@@ -68,10 +69,49 @@ def values_match(field: str, pred_val, gt_val) -> bool:
     return str(pred_val).strip().lower() == str(gt_val).strip().lower()
 
 
-def build_prompt(instruction: str, input_text: str, n_shots: int = 0) -> str:
+def is_missing_prediction(value) -> bool:
+    if isinstance(value, (dict, list, set, tuple)):
+        return False
+    return value in MISSING_PREDICTION_VALUES
+
+
+def load_few_shot_examples(path: str, n_shots: int) -> list[dict]:
+    if n_shots <= 0:
+        return []
+    if not path or not os.path.exists(path):
+        return FEW_SHOT_EXAMPLES[:n_shots]
+
+    with open(path) as f:
+        records = [json.loads(line) for line in f if line.strip()]
+
+    grouped: dict[str, deque] = defaultdict(deque)
+    for record in records:
+        grouped[record.get("template_id", "unknown")].append(
+            {"input": record["input"], "output": record["output"]}
+        )
+
+    selected = []
+    while len(selected) < n_shots and grouped:
+        for template_id in sorted(list(grouped)):
+            if grouped[template_id]:
+                selected.append(grouped[template_id].popleft())
+                if len(selected) == n_shots:
+                    break
+            if not grouped[template_id]:
+                del grouped[template_id]
+    return selected
+
+
+def build_prompt(
+    instruction: str,
+    input_text: str,
+    n_shots: int = 0,
+    few_shot_examples: list[dict] | None = None,
+) -> str:
+    examples = few_shot_examples if few_shot_examples is not None else FEW_SHOT_EXAMPLES
     prefix = "".join(
         build_alpaca_prompt(instruction, ex["input"], ex["output"]) + "\n\n"
-        for ex in FEW_SHOT_EXAMPLES[:n_shots]
+        for ex in examples[:n_shots]
     )
     return prefix + build_alpaca_prompt(instruction, input_text)
 
@@ -159,8 +199,10 @@ def calculate_metrics(
     failures = []
 
     template_breakdown: dict[str, dict[str, int]] = defaultdict(lambda: {"correct": 0, "total": 0})
+    category_breakdown: dict[str, dict[str, int]] = defaultdict(lambda: {"correct": 0, "total": 0})
     noise_breakdown: dict[str, dict[str, int]] = defaultdict(lambda: {"correct": 0, "total": 0})
     has_template_metadata = bool(sample_metadata and any(m.get("template_id") for m in sample_metadata))
+    has_category_metadata = bool(sample_metadata and any(m.get("golden_category") for m in sample_metadata))
     has_noise_metadata = bool(sample_metadata and any("noise_level" in m for m in sample_metadata))
 
     hallucination_count = 0
@@ -183,7 +225,7 @@ def calculate_metrics(
 
             if gt_val is None:
                 hallucination_opportunities += 1
-                if pred_val not in MISSING_PREDICTION_VALUES:
+                if not is_missing_prediction(pred_val):
                     hallucination_count += 1
 
             if values_match(field, pred_val, gt_val):
@@ -219,6 +261,11 @@ def calculate_metrics(
             template_breakdown[template_id]["correct"] += sample_correct
             template_breakdown[template_id]["total"] += len(field_names)
 
+        if has_category_metadata:
+            category = metadata.get("golden_category", "unknown")
+            category_breakdown[category]["correct"] += sample_correct
+            category_breakdown[category]["total"] += len(field_names)
+
         if has_noise_metadata:
             noise_bucket = bucket_noise_level(metadata.get("noise_level"))
             noise_breakdown[noise_bucket]["correct"] += sample_correct
@@ -237,6 +284,8 @@ def calculate_metrics(
 
     if has_template_metadata:
         metrics["accuracy_by_template"] = _build_breakdown(template_breakdown)
+    if has_category_metadata:
+        metrics["accuracy_by_category"] = _build_breakdown(category_breakdown)
     if has_noise_metadata:
         metrics["accuracy_by_noise_bucket"] = _build_breakdown(noise_breakdown)
     if latencies_sec is not None:
@@ -251,11 +300,13 @@ def error_analysis(metrics: dict, label: str) -> None:
         print(f"\n[{label}] No failures.")
         return
 
-    invalid_json = [f for f in failures if f["reason"] == "invalid_json"]
+    invalid_json_samples = {
+        f["sample_idx"] for f in failures if f["reason"] == "invalid_json" and "sample_idx" in f
+    }
     field_failures = [f for f in failures if f["reason"] == "field_mismatch"]
 
     print(f"\n[{label}] Error Analysis")
-    print(f"  Invalid JSON responses : {len(invalid_json)}")
+    print(f"  Invalid JSON responses : {len(invalid_json_samples)}")
     print(f"  Field mismatches       : {len(field_failures)}")
 
     by_field: dict[str, int] = {}
@@ -307,12 +358,17 @@ def run_evaluation(
     adapter_path: str | None = None,
     test_file: str = "data/test.jsonl",
     n_shots: int = 0,
+    few_shot_file: str | None = None,
+    postprocess: bool = False,
+    sample_limit: int | None = None,
 ):
     import torch
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     label = f"Fine-tuned ({n_shots}-shot)" if adapter_path else f"Baseline ({n_shots}-shot)"
+    if postprocess:
+        label += " + postprocess"
     print(f"\n--- Evaluating: {label} ---")
 
     bnb_config = BitsAndBytesConfig(
@@ -335,6 +391,9 @@ def run_evaluation(
 
     with open(test_file) as f:
         samples = [json.loads(line) for line in f]
+    if sample_limit is not None:
+        samples = samples[:sample_limit]
+    few_shot_examples = load_few_shot_examples(few_shot_file, n_shots) if n_shots else []
 
     predictions = []
     ground_truths = []
@@ -342,7 +401,12 @@ def run_evaluation(
     latencies_sec = []
 
     for sample in tqdm(samples):
-        prompt = build_prompt(sample["instruction"], sample["input"], n_shots=n_shots)
+        prompt = build_prompt(
+            sample["instruction"],
+            sample["input"],
+            n_shots=n_shots,
+            few_shot_examples=few_shot_examples,
+        )
         inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
 
         started_at = time.perf_counter()
@@ -352,11 +416,13 @@ def run_evaluation(
 
         response = tokenizer.decode(outputs[0], skip_special_tokens=True)
         prediction_text = response.split("### Response:\n")[-1]
-        predictions.append(extract_json_from_text(prediction_text))
+        prediction = extract_json_from_text(prediction_text)
+        predictions.append(normalize_extraction(prediction) if postprocess else prediction)
         ground_truths.append(json.loads(sample["output"]))
         sample_metadata.append(
             {
                 "template_id": sample.get("template_id"),
+                "golden_category": sample.get("golden_category"),
                 "noise_level": sample.get("noise_level"),
             }
         )

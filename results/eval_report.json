@@ -1,0 +1,13 @@
+{
+  "project": "DocTune",
+  "generated_at": "2026-05-07T03:04:27.088775+00:00",
+  "status": "pending_full_regeneration_after_golden_expansion",
+  "reason": "data/golden.jsonl was expanded to 200 categorized OOD records after the previous full report.",
+  "golden_records": 200,
+  "available_artifacts": {
+    "synthetic_test_benchmark": "results/artifact_results.json",
+    "golden_smoke_eval": "results/golden_smoke_eval.json",
+    "data_ablation_plan": "results/data_ablation_plan.md"
+  },
+  "regenerate_command": "python scripts/eval_suite.py --model-id models/Qwen2.5-1.5B-Instruct --adapter-path models/doctune-qwen-1.5b-lora --datasets data/test.jsonl data/golden.jsonl"
+}
